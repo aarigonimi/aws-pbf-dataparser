@@ -122,3 +122,54 @@ def test_bool_and_numeric_parsing():
 def test_invalid_int_raises_config_error():
     with pytest.raises(ConfigError):
         JobConfig.from_env(_env(MAX_RECORDS_PER_FILE="many"))
+
+
+@pytest.mark.parametrize("ymd", ["2026-1", "2026118", "garbage", "202611081"])
+def test_invalid_ymd_format_raises_config_error(ymd):
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(_env(YMD=ymd))
+
+
+def test_invalid_calendar_date_raises_config_error():
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(_env(YMD="20261301"))
+
+
+def test_ymd_extracted_from_raw_key_is_validated():
+    env = _env()
+    env.pop("YMD")
+    env["RAW_KEY"] = "region=monaco/ymd=not-a-date/monaco.osm.pbf"
+
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(env)
+
+
+@pytest.mark.parametrize(
+    "prefix",
+    ["../escape", "curated/../curated", "curated/./x", "curated//x", "curated/x y"],
+)
+def test_invalid_output_prefix_raises_config_error(prefix):
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(_env(OUTPUT_PREFIX=prefix))
+
+
+def test_output_prefix_strips_surrounding_slashes():
+    config = JobConfig.from_env(_env(OUTPUT_PREFIX="/curated/"))
+
+    assert config.output_prefix == "curated"
+
+
+def test_output_prefix_accepts_nested_relative_prefixes():
+    config = JobConfig.from_env(_env(OUTPUT_PREFIX="data/lake.v2/curated"))
+
+    assert config.output_prefix == "data/lake.v2/curated"
+
+
+def test_run_id_defaults_from_batch_job_and_attempt():
+    config = JobConfig.from_env(_env(AWS_BATCH_JOB_ID="job:abc 123", AWS_BATCH_JOB_ATTEMPT="2"))
+
+    assert config.run_id == "job-abc-123-attempt-2"
+
+
+def test_run_id_defaults_to_local_run_without_batch_context():
+    assert JobConfig.from_env(_env()).run_id == "local-run"

@@ -4,7 +4,7 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from typing import Final
 
 from src.errors import ConfigError
@@ -14,6 +14,7 @@ VALID_OVERWRITE: Final = frozenset({"error", "skip", "replace"})
 VALID_MODES: Final = frozenset({"all", "nodes", "ways", "relations"})
 VALID_LOG_LEVELS: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 _ALLOWED_PATH_TOKEN: Final = re.compile(r"^[A-Za-z0-9._-]+$")
+_YMD_PATTERN: Final = re.compile(r"^\d{8}$")
 
 
 def _required(env: Mapping[str, str], name: str) -> str:
@@ -72,6 +73,45 @@ def _path_token(env: Mapping[str, str], name: str, default: str) -> str:
     return value
 
 
+def _s3_prefix(env: Mapping[str, str], name: str, default: str) -> str:
+    value = (env.get(name, "").strip().strip("/")).strip()
+    value = value or default
+    for segment in value.split("/"):
+        if not _ALLOWED_PATH_TOKEN.match(segment) or segment in {".", ".."}:
+            raise ConfigError(
+                f"{name} must be a relative S3 prefix containing only letters, "
+                f"digits, dot, underscore, dash and single slashes, got {value!r}."
+            )
+    return value
+
+
+def _validate_ymd(value: str) -> str:
+    ymd = value.strip()
+    if not _YMD_PATTERN.match(ymd):
+        raise ConfigError(f"YMD must be formatted YYYYMMDD, got {ymd!r}.")
+    try:
+        datetime.strptime(ymd, "%Y%m%d")
+    except ValueError as exc:
+        raise ConfigError(f"YMD is not a valid calendar date, got {ymd!r}.") from exc
+    return ymd
+
+
+def _default_run_id(env: Mapping[str, str]) -> str:
+    """Derive a safe default run id from the AWS Batch job context when present.
+
+    Including the attempt number keeps staging keys unique across Batch
+    retries of the same job id.
+    """
+
+    job_id = env.get("AWS_BATCH_JOB_ID", "").strip()
+    attempt = env.get("AWS_BATCH_JOB_ATTEMPT", "").strip()
+    if not job_id:
+        return "local-run"
+    candidate = f"{job_id}-attempt-{attempt}" if attempt else job_id
+    sanitized = re.sub(r"[^A-Za-z0-9._-]", "-", candidate)
+    return sanitized or "local-run"
+
+
 def _derive_ymd(env: Mapping[str, str], raw_key: str) -> str:
     explicit = env.get("YMD") or env.get("RAW_YMD")
     if explicit:
@@ -126,6 +166,10 @@ class JobConfig:
     def manifest_relative_key(self) -> str:
         return f"region={self.region_name}/ymd={self.ymd}/_manifest.json"
 
+    @property
+    def lock_relative_key(self) -> str:
+        return f"region={self.region_name}/ymd={self.ymd}/_lock.json"
+
     def entity_relative_prefix(self, entity_name: str) -> str:
         return f"region={self.region_name}/ymd={self.ymd}/entity={entity_name}"
 
@@ -148,16 +192,16 @@ class JobConfig:
         raw_bucket = _required(source, "RAW_BUCKET")
         output_bucket = _required(source, "OUTPUT_BUCKET")
         region_name = _path_token(source, "REGION_NAME", source.get("REGION", "monaco"))
-        run_id = _path_token(source, "RUN_ID", "local-run")
+        run_id = _path_token(source, "RUN_ID", _default_run_id(source))
         image_digest = source.get("JOB_IMAGE_DIGEST", "").strip() or None
         if image_digest == "unset":
             image_digest = None
         git_sha = source.get("GIT_SHA", "").strip() or None
         aws_region = source.get("AWS_REGION", "us-east-1").strip() or "us-east-1"
-        output_prefix = source.get("OUTPUT_PREFIX", "curated").strip().strip("/") or "curated"
+        output_prefix = _s3_prefix(source, "OUTPUT_PREFIX", "curated")
 
         raw_key = source.get("RAW_KEY", "").strip().strip("/")
-        ymd = _derive_ymd(source, raw_key)
+        ymd = _validate_ymd(_derive_ymd(source, raw_key))
         if not raw_key:
             raw_key = f"region={region_name}/ymd={ymd}/{region_name}-{ymd}.osm.pbf"
 
