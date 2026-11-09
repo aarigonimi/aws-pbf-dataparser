@@ -1,0 +1,52 @@
+aws_region  = "us-east-1"
+project_name = "osm-pbf-data-lake"
+
+# A random hex suffix is appended, so keep these as base names.
+raw_bucket_name     = "osm-data-raw"
+curated_bucket_name = "osm-data-curated"
+
+default_region = "monaco"
+output_prefix  = "curated"
+
+# Existing VPC/subnets are optional. Empty means the default VPC.
+# vpc_id     = "vpc-0123456789abcdef0"
+# subnet_ids = ["subnet-0123456789abcdef0", "subnet-0123456789abcdef1"]
+
+batch_compute_type         = "FARGATE"
+batch_vcpus                = 2
+batch_memory_mb            = 8192
+batch_ephemeral_storage_gb = 100
+batch_timeout_seconds      = 21600
+batch_retry_attempts       = 3
+
+# EC2 mode only.
+# batch_compute_type   = "EC2"
+# batch_use_spot       = true
+# spot_iam_fleet_role_arn = "arn:aws:iam::<account-id>:role/aws-ec2-spot-fleet-tagging-role"
+# batch_instance_types = ["m5.xlarge"]
+# batch_min_vcpus     = 0
+# batch_desired_vcpus = 0
+
+image_tag                 = "v0.1.0"
+ecr_repository_name        = "osm-pbf-batch"
+ecr_image_tag_mutability   = "IMMUTABLE"
+
+mode                  = "all"
+overwrite             = "error"
+parquet_compression   = "snappy"
+include_way_geometry  = false
+log_level             = "INFO"
+log_retention_days    = 30
+
+raw_retention_days             = 30
+staging_retention_days         = 1
+curated_noncurrent_version_days = 30
+athena_results_retention_days  = 14
+
+athena_bytes_scanned_cutoff = 0
+
+tags = {
+  Project = "osm-pbf-data-lake"
+  Owner   = "aws-data-engineering"
+  Env     = "dev"
+}

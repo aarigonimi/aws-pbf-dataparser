@@ -1,0 +1,29 @@
+flowchart LR
+    subgraph Build["Build and deploy (operator workstation)"]
+        TF[Terraform<br/>infrastructure/*.tf]
+        DOCKER[docker buildx<br/>scripts/docker_build_push.sh]
+    end
+
+    PBF[Regional .osm.pbf extract] -->|aws s3 cp| RAW[(S3 raw bucket<br/>region=R/ymd=D/*.osm.pbf)]
+    DOCKER -->|push tag| ECR[(Amazon ECR<br/>osm-pbf-batch)]
+    SUBMIT[scripts/submit_job.sh] -->|submit-job + env overrides| QUEUE[AWS Batch job queue]
+
+    subgraph VPC["Default VPC - one subnet"]
+        QUEUE --> JOB[Fargate task<br/>2 vCPU / 8 GiB / 100 GiB]
+        EP_ECR[Interface endpoints<br/>ecr.api + ecr.dkr]
+        EP_LOGS[Interface endpoint<br/>logs]
+        EP_S3[Gateway endpoint<br/>s3]
+    end
+
+    ECR -.->|image pull via| EP_ECR -.-> JOB
+    JOB -.->|awslogs via| EP_LOGS -.-> CW[CloudWatch Logs<br/>/aws/batch/osm-pbf-data-lake]
+    RAW -->|GetObject via| EP_S3 --> JOB
+
+    JOB -->|PyOsmium SimpleHandler| SINKS[ParquetSink x3<br/>nodes / ways / relations]
+    SINKS -->|upload| STAGE[(S3 curated<br/>curated/_staging/run_id=X/)]
+    STAGE -->|copy data, then _manifest.json last| CURATED[(S3 curated<br/>curated/region=R/ymd=D/entity=E/)]
+    CURATED --> CRAWLER[AWS Glue crawler]
+    CRAWLER --> CATALOG[Glue Data Catalog<br/>osm_catalog]
+    CATALOG --> ATHENA[Amazon Athena<br/>osm-pbf-workgroup]
+    ATHENA -->|results| RESULTS[(S3 curated<br/>athena-results/)]
+    TF -.provisions.-> RAW & ECR & QUEUE & EP_ECR & EP_LOGS & EP_S3 & CRAWLER & ATHENA

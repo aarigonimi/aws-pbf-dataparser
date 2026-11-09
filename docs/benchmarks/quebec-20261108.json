@@ -1,0 +1,95 @@
+{
+  "benchmark_id": "quebec-20261108233711",
+  "region": "quebec",
+  "extract_date": "2026-11-08",
+  "status": "success",
+  "provenance": {
+    "manifest": "s3://<curated-bucket>/curated/region=quebec/ymd=20261108/_manifest.json",
+    "aws_batch_values": "read from the existing AWS account",
+    "historical_claims": "manifest values independently checked against Glue and Athena entity counts"
+  },
+  "input": {
+    "s3_uri": "s3://<raw-bucket>/region=quebec/ymd=20261108/quebec-20261108.osm.pbf",
+    "bytes": 1166570375,
+    "size_gb_decimal": 1.166570375,
+    "size_gib": 1.0863
+  },
+  "entities": {
+    "nodes": 138606771,
+    "ways": 9897180,
+    "relations": 194419,
+    "total": 148698370
+  },
+  "processing": {
+    "manifest_started_at_utc": "2026-11-09T04:38:31.075549+00:00",
+    "manifest_generated_at_utc": "2026-11-09T06:10:52.236887+00:00",
+    "duration_seconds_manifest": 5541.161,
+    "parse_seconds_manifest": 5530.778,
+    "download_seconds_manifest": 10.214,
+    "application_total_duration_seconds_cloudwatch": 5894.62,
+    "batch_execution_seconds_aws": 5922.575,
+    "throughput_entities_per_parse_second_derived": 26882.2,
+    "throughput_provenance": "derived from manifest total_records / parse_seconds",
+    "duration_note": "Manifest duration ends when the manifest is generated, before final S3 publication and cleanup. CloudWatch's Run complete duration includes publication; Batch startedAt-to-stoppedAt also includes container startup/shutdown.",
+    "file_rotation_observation": "The manifest records 300000 rows in most full files. The application default max_records_per_file is 250000 and row_group_size is 100000; the writer previously rotated only on row-group boundaries. The writer was corrected in this repository audit. Existing S3 data was not changed."
+  },
+  "compute": {
+    "batch_compute_type": "FARGATE",
+    "vcpus": 2,
+    "memory_mib": 8192,
+    "ephemeral_storage_gib": 100,
+    "attempt_timeout_seconds": 21600,
+    "retry_limit_including_initial_attempt": 3,
+    "attempts_for_benchmark_job": 1,
+    "related_overlapping_job": {
+      "job_name": "osm-quebec-quebec-20261108232431",
+      "attempts": 3,
+      "failed_attempts": 2,
+      "failure_reason": "ECR GetAuthorizationToken connection timeouts during task initialization",
+      "final_attempt": "succeeded and parsed/published the same input partition while the benchmark job was also running"
+    },
+    "concurrency_note": "The two Quebec jobs overlapped on the same region/date partition. Both CloudWatch logs report successful processing and publication; the final S3 manifest names this benchmark job. There is no distributed partition lock, and duplicate compute was used.",
+    "image": "<aws-account-id>.dkr.ecr.us-east-1.amazonaws.com/osm-pbf-batch:<image-tag>",
+    "image_tag_mutability": "AWS Batch described a latest tag; the digest was not recorded in the manifest"
+  },
+  "output": {
+    "s3_prefix": "s3://<curated-bucket>/curated/region=quebec/ymd=20261108/",
+    "parquet_files": 497,
+    "s3_object_listing_parquet_file_count": 497,
+    "s3_object_listing_total_prefix_bytes_including_manifest": 6454111462,
+    "files_by_entity": {
+      "nodes": 463,
+      "ways": 33,
+      "relations": 1
+    },
+    "parquet_bytes": 6454025948,
+    "parquet_gb_decimal": 6.454025948,
+    "parquet_gib": 6.0096,
+    "compression": "snappy",
+    "include_way_geometry": false,
+    "average_file_bytes_derived": 12985968.7
+  },
+  "validation": {
+    "glue_database": "osm_catalog",
+    "glue_tables": ["entity_nodes", "entity_ways", "entity_relations", "_manifest_json"],
+    "glue_entity_schemas_match_documented_schema": true,
+    "athena_entity_counts": {
+      "entity_nodes": 138606771,
+      "entity_ways": 9897180,
+      "entity_relations": 194419
+    },
+    "entity_counts_match_manifest": true,
+    "athena_manifest_table_rows": 0,
+    "athena_manifest_note": "Athena returned zero rows for _manifest_json because underscore-prefixed files are skipped by the underlying file reader; the manifest object itself was read from S3 and parsed successfully.",
+    "athena_query_execution_state": "SUCCEEDED",
+    "athena_data_scanned_bytes_reported": 0,
+    "athena_engine_execution_time_ms_reported": 1072,
+    "athena_scan_note": "Athena reported zero scanned bytes; preserve this as the service-reported statistic, not as evidence that the entity data occupied zero bytes."
+  },
+  "cost": {
+    "actual_compute_cost": null,
+    "actual_athena_cost": null,
+    "status": "unavailable",
+    "note": "No billing or cost allocation record was collected for this benchmark."
+  }
+}

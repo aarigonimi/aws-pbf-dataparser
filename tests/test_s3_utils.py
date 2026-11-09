@@ -1,0 +1,129 @@
+from pathlib import Path
+
+import pytest
+from botocore.exceptions import ClientError
+
+from src.errors import InputError, TransientError
+from src.s3_utils import S3Client
+
+
+def _client_error(code: str) -> ClientError:
+    return ClientError({"Error": {"Code": code, "Message": code}}, "TestOperation")
+
+
+class FakeBotoClient:
+    def __init__(self, error: ClientError | None = None):
+        self.objects: dict[str, bytes] = {}
+        self.error = error
+        self.uploaded: list[tuple[str, str]] = []
+        self.copied: list[tuple[str, str]] = []
+        self.delete_calls: list[list[str]] = []
+
+    def head_object(self, Bucket, Key):
+        if self.error:
+            raise self.error
+        if Key not in self.objects:
+            raise _client_error("NoSuchKey")
+        return {"ContentLength": len(self.objects[Key]), "ETag": '"etag"'}
+
+    def download_file(self, Bucket, Key, Filename):
+        if self.error:
+            raise self.error
+        if Key not in self.objects:
+            raise _client_error("NoSuchKey")
+        Path(Filename).write_bytes(self.objects[Key])
+
+    def upload_file(self, Filename, Bucket, Key, ExtraArgs=None):
+        if self.error:
+            raise self.error
+        self.objects[Key] = Path(Filename).read_bytes()
+        self.uploaded.append((Bucket, Key))
+
+    def copy_object(self, Bucket, CopySource, Key):
+        if self.error:
+            raise self.error
+        self.objects[Key] = self.objects[CopySource["Key"]]
+        self.copied.append((CopySource["Key"], Key))
+
+    def get_paginator(self, name):
+        objects = self.objects
+
+        class Paginator:
+            def paginate(self, Bucket, Prefix):
+                keys = [key for key in sorted(objects) if key.startswith(Prefix)]
+                if not keys:
+                    return [{}]
+                return [{"Contents": [{"Key": key} for key in keys]}]
+
+        return Paginator()
+
+    def delete_objects(self, Bucket, Delete):
+        if self.error:
+            raise self.error
+        keys = [item["Key"] for item in Delete["Objects"]]
+        self.delete_calls.append(keys)
+        for key in keys:
+            self.objects.pop(key, None)
+
+
+def test_head_and_download_missing_object_are_input_errors(tmp_path: Path):
+    client = S3Client(region="us-east-1", client=FakeBotoClient())
+
+    with pytest.raises(InputError):
+        client.head("bucket", "missing.pbf")
+    with pytest.raises(InputError):
+        client.download("bucket", "missing.pbf", tmp_path / "missing.pbf")
+
+
+def test_head_other_error_is_transient():
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error("500")))
+
+    with pytest.raises(TransientError):
+        client.head("bucket", "key")
+
+
+def test_exists_returns_false_for_missing_key():
+    client = S3Client(region="us-east-1", client=FakeBotoClient())
+
+    assert client.exists("bucket", "missing.pbf") is False
+
+
+def test_download_writes_file_and_rejects_empty(tmp_path: Path):
+    fake = FakeBotoClient()
+    fake.objects["input.pbf"] = b"abc"
+    client = S3Client(region="us-east-1", client=fake)
+
+    target = client.download("bucket", "input.pbf", tmp_path / "input.pbf")
+    assert target.read_bytes() == b"abc"
+
+    fake.objects["empty.pbf"] = b""
+    with pytest.raises(InputError):
+        client.download("bucket", "empty.pbf", tmp_path / "empty.pbf")
+
+
+def test_upload_copy_and_list(tmp_path: Path):
+    fake = FakeBotoClient()
+    client = S3Client(region="us-east-1", client=fake)
+    source = tmp_path / "part.parquet"
+    source.write_bytes(b"parquet")
+
+    client.upload(source, "bucket", "staging/part.parquet")
+    client.copy("bucket", "staging/part.parquet", "final/part.parquet")
+
+    assert fake.uploaded == [("bucket", "staging/part.parquet")]
+    assert fake.copied == [("staging/part.parquet", "final/part.parquet")]
+    assert client.list_keys("bucket", "final/") == ["final/part.parquet"]
+
+
+def test_delete_keys_chunks_and_swallows_failures():
+    fake = FakeBotoClient()
+    fake.objects = {f"k/{index}": b"x" for index in range(1001)}
+    client = S3Client(region="us-east-1", client=fake)
+
+    client.delete_keys("bucket", list(fake.objects))
+
+    assert len(fake.delete_calls) == 2
+    assert fake.objects == {}
+
+    failing = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error("500")))
+    failing.delete_keys("bucket", ["a"])

@@ -1,0 +1,27 @@
+name: Terraform validation
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infrastructure
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.11.4"
+      - name: Check formatting
+        run: terraform fmt -check -recursive
+      - name: Initialize without a remote backend
+        run: terraform init -backend=false -input=false
+      - name: Validate configuration
+        run: terraform validate

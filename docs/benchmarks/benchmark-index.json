@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "benchmarks": [
+    {
+      "region": "quebec",
+      "run_id": "quebec-20261108233711",
+      "extract_date": "2026-11-08",
+      "status": "success",
+      "record": "quebec-20261108.json",
+      "entities": 148698370,
+      "parquet_files": 497,
+      "parquet_bytes": 6454025948,
+      "parse_seconds": 5530.778,
+      "validation": "athena_counts_match_manifest"
+    },
+    {
+      "region": "london",
+      "run_id": "london-20261109142209",
+      "extract_date": "2026-11-08",
+      "status": "success",
+      "record": "london-20261108.json",
+      "entities": 13346901,
+      "parquet_files": 46,
+      "parquet_bytes": 588845591,
+      "parse_seconds": 549.27,
+      "validation": "athena_not_queried"
+    }
+  ]
+}

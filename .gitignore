@@ -1,0 +1,41 @@
+.DS_Store
+
+# Python build and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.env
+.env.*
+!.env.example
+*.tfvars
+*.tfvars.json
+!infrastructure/terraform.tfvars.example
+
+# Local infrastructure state, plans, and provider working directory
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+tfplan.*
+terraform.tfstate.backup
+crash.log
+crash.*.log
+*.log
+!infrastructure/.terraform.lock.hcl
+
+# Local reports and sample outputs
+*.osm.pbf
+*.parquet
+output/
+.local/
+data/*.osm.pbf
+
+# Decompiled and generated files are not source
+decompiled/
+src_dec/

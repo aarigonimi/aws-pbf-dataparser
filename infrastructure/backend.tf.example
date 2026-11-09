@@ -1,0 +1,18 @@
+# Copy to backend.tf to enable remote state, then run:
+#   terraform init -migrate-state
+#
+# Back up terraform.tfstate first. The bucket must already exist, be private,
+# versioned and encrypted. Do not commit credentials.
+
+terraform {
+  backend "s3" {
+    bucket       = "REPLACE-WITH-TERRAFORM-STATE-BUCKET"
+    key          = "osm-pbf-data-lake/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+
+    # Optional for older Terraform/provider combinations:
+    # dynamodb_table = "REPLACE-WITH-STATE-LOCK-TABLE"
+  }
+}
