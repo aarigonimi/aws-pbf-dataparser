@@ -12,11 +12,7 @@ from typing import Any
 
 from src.config import JobConfig
 from src.errors import JobCancelled, OutputConflictError
-from src.parquet_writer import (
-    SCHEMA_VERSION,
-    ParquetSink,
-    write_summary_json,
-)
+from src.parquet_writer import SCHEMA_VERSION, Artifact, ParquetSink, write_summary_json
 from src.s3_utils import S3Client
 
 logger = logging.getLogger(__name__)
@@ -192,12 +188,24 @@ def run_pipeline(
             download_seconds,
         )
 
+        uploaded_artifacts: dict[Path, str] = {}
+
+        def upload_closed_artifact(artifact: Artifact) -> None:
+            relative_path = artifact.path.relative_to(local_curated)
+            relative_key = relative_path.as_posix()
+            staging_key = config.staging_key(relative_key)
+            client.upload(artifact.path, config.output_bucket, staging_key)
+            staging_uploaded.append(staging_key)
+            uploaded_artifacts[artifact.path] = staging_key
+            artifact.path.unlink()
+
         for entity in config.entity_types:
             sinks[entity] = ParquetSink(
                 local_curated / f"entity={entity}",
                 compression=config.compression,
                 max_records_per_file=config.max_records_per_file,
                 row_group_size=config.row_group_size,
+                on_file_closed=upload_closed_artifact,
             )
 
         parse_started = time.monotonic()
@@ -279,10 +287,6 @@ def run_pipeline(
         }
         write_summary_json(manifest_path, manifest)
 
-        for item in files:
-            staging_key = config.staging_key(item["relative_key"])
-            client.upload(item["local_path"], config.output_bucket, staging_key)
-            staging_uploaded.append(staging_key)
         manifest_staging_key = config.staging_key(config.manifest_relative_key)
         client.upload(manifest_path, config.output_bucket, manifest_staging_key)
         staging_uploaded.append(manifest_staging_key)
@@ -314,7 +318,7 @@ def run_pipeline(
                     published_keys.append(final_key)
                 client.copy(
                     config.output_bucket,
-                    config.staging_key(item["relative_key"]),
+                    uploaded_artifacts[Path(item["local_path"])],
                     final_key,
                 )
             if manifest_key not in preexisting_final_keys:
@@ -333,6 +337,9 @@ def run_pipeline(
         if stale_keys:
             client.delete_keys(config.output_bucket, stale_keys)
             logger.info("Removed %d stale output objects.", len(stale_keys))
+
+        for item in files:
+            Path(item["local_path"]).unlink(missing_ok=True)
 
         total_seconds = time.monotonic() - run_started
         logger.info(

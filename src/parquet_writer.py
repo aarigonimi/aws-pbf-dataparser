@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -70,6 +70,7 @@ class ParquetSink:
         row_group_size: int = 100_000,
         schema: pa.Schema | None = None,
         file_prefix: str = "part",
+        on_file_closed: Callable[[Artifact], None] | None = None,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -78,6 +79,7 @@ class ParquetSink:
         self.row_group_size = row_group_size
         self.schema = schema or dataset_schema()
         self.file_prefix = file_prefix
+        self.on_file_closed = on_file_closed
 
         self.total_records = 0
         self._buffer: list[dict[str, Any]] = []
@@ -124,9 +126,12 @@ class ParquetSink:
         path = self.output_dir / f"{self.file_prefix}-{self._file_index:05d}.parquet"
         self._writer.close()
         self._writer = None
-        self._artifacts.append(
-            Artifact(path=path, records=self._current_file_records, bytes=path.stat().st_size)
+        artifact = Artifact(
+            path=path, records=self._current_file_records, bytes=path.stat().st_size
         )
+        self._artifacts.append(artifact)
+        if self.on_file_closed is not None:
+            self.on_file_closed(artifact)
         self._file_index += 1
         self._current_file_records = 0
 

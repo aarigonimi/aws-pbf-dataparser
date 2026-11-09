@@ -27,6 +27,7 @@ class FakeS3:
         self.delete_fail_keys = delete_fail_keys or set()
         self.deleted: list[str] = []
         self.events: list[dict[str, Any]] = []
+        self.upload_events: list[tuple[str, bool]] = []
 
     def _manifest_present(self):
         return any(
@@ -50,6 +51,7 @@ class FakeS3:
         return sorted(key for key in self.objects if key.startswith(prefix))
 
     def upload(self, local_path, bucket, key):
+        self.upload_events.append((key, Path(local_path).exists()))
         self.objects[key] = Path(local_path).read_bytes()
 
     def copy(self, bucket, source_key, destination_key):
@@ -136,6 +138,10 @@ def test_successful_run_publishes_data_and_manifest_last(tmp_path: Path):
     assert result.manifest_key == ("curated/region=monaco/ymd=20261108/_manifest.json")
     assert "curated/region=monaco/ymd=20261108/entity=nodes/part-00000.parquet" in fake.objects
     assert not any(key.startswith("curated/_staging/") for key in fake.objects)
+    data_uploads = [key for key, _ in fake.upload_events if key.endswith(".parquet")]
+    assert len(data_uploads) == 3
+    assert all(local_exists for key, local_exists in fake.upload_events if key.endswith(".parquet"))
+    assert not list((Path(config.local_work_dir) / "curated").rglob("*.parquet"))
 
 
 def test_empty_input_publishes_empty_manifest(tmp_path: Path):

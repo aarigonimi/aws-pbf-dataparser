@@ -46,10 +46,12 @@ def test_write_dataset_returns_paths_and_valid_parquet(tmp_path: Path):
 
 
 def test_parquet_sink_rotates_files(tmp_path: Path):
+    closed = []
     sink = ParquetSink(
         tmp_path / "entity=ways",
         max_records_per_file=2,
         row_group_size=1,
+        on_file_closed=closed.append,
     )
     for osm_id in range(3):
         sink.add(_row(osm_id, "way"))
@@ -60,6 +62,20 @@ def test_parquet_sink_rotates_files(tmp_path: Path):
     assert [artifact.records for artifact in artifacts] == [2, 1]
     assert all(artifact.path.exists() for artifact in artifacts)
     assert sum(artifact.bytes for artifact in artifacts) > 0
+    assert closed == artifacts
+
+
+def test_parquet_sink_callback_runs_on_close_for_final_file(tmp_path: Path):
+    closed = []
+    sink = ParquetSink(tmp_path / "entity=nodes", on_file_closed=closed.append)
+    sink.add(_row())
+
+    assert closed == []
+    sink.close()
+
+    assert closed == sink.artifacts()
+    assert closed[0].records == 1
+    assert closed[0].bytes == closed[0].path.stat().st_size
 
 
 def test_parquet_sink_honors_file_limit_between_row_group_boundaries(tmp_path: Path):
