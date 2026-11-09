@@ -18,8 +18,10 @@ must check for it before querying.
 
 ## Trade-offs
 
-This is not an atomic commit. Concurrent jobs can race on one partition, and
-`OVERWRITE=replace` can leave previous data unavailable after a failed copy.
-S3 versioning supports manual recovery. Enforce one job per partition and use
-`OVERWRITE=error` for normal first publication. See
+This is not an atomic commit. Concurrent jobs can race on one partition. In
+`OVERWRITE=replace`, the old manifest is removed before copying, and rollback
+does not delete keys that existed before the run; a failed replacement can
+leave changed data without a manifest. S3 versioning supports manual recovery.
+Enforce one job per partition and use `OVERWRITE=error` for normal first
+publication. See
 [architecture](../ARCHITECTURE.md) for failure behavior.

@@ -38,6 +38,19 @@ the raw bucket. `OVERWRITE=skip` exits successfully if a manifest already
 exists. `OVERWRITE=replace` republishes and should be reserved for a controlled
 recovery because it is not failure-atomic.
 
+If a previous attempt left data without `_manifest.json`, inspect the current
+objects and logs, then resubmit with the same region/date and `OVERWRITE=replace`:
+
+```bash
+REGION_NAME="$REGION_NAME" YMD="$YMD" OVERWRITE=replace ./scripts/submit_job.sh
+```
+
+The replacement path removes an existing manifest before overwriting data,
+publishes a new manifest after all data copies, then removes stale keys. If the
+replacement fails, do not query the partition until a new manifest exists and
+its contents match the objects. The old object versions remain available for
+manual recovery when bucket versioning is enabled.
+
 Inspect the submitted job ID from the CLI response, then poll it:
 
 ```bash

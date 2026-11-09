@@ -101,7 +101,7 @@ Three design rules shape the code:
 
 1. **Stream everything.** Never hold the PBF, or a whole entity type, in memory.
 2. **Make failures classifiable.** Each failure class maps to a process exit code, and AWS Batch retries only the transient ones.
-3. **Publish with a completion marker.** Readers that check for `_manifest.json` before querying can use it to identify a completed partition. The marker does not gate direct S3 listings or Athena queries; they can see copied objects before publication finishes. S3 has no transaction across these keys, and replacement is not an atomic snapshot swap.
+3. **Publish with a completion marker.** Readers that check for `_manifest.json` before querying can use it to identify a completed partition. The marker does not gate direct S3 listings or Athena queries; they can see copied objects before publication finishes. S3 has no transaction across these keys. In `replace`, the old marker is removed before copies and rollback leaves pre-existing objects in place; replacement is still not an atomic snapshot swap.
 
 ---
 
@@ -375,31 +375,40 @@ After parsing, it builds the **manifest**. The manifest is a JSON document that 
 
 The rest of the manifest holds `output` settings, `record_counts`, `total_records`, `total_output_bytes`, a `files` inventory with per-file key/bytes/records, the parser's own `processor_counts`, and `timings` (`download_seconds`, `parse_seconds`).
 
-Publication is the part to get right. S3 has no multi-object transaction, so the pipeline uses three steps:
+Publication is the part to get right. S3 has no multi-object transaction, so the pipeline uses these steps:
 
 1. Upload every Parquet file **and** the manifest to a run-scoped staging prefix: `curated/_staging/run_id=<run_id>/...`
-2. Server-side copy each data file to its final key.
-3. Copy the manifest **last**. Its presence is the completion marker.
+2. In `OVERWRITE=replace`, record the pre-existing final keys and delete the old manifest before copying data. Refuse to continue if that manifest remains.
+3. Server-side copy each data file. Rollback candidates include only keys that did not exist before this run.
+4. Copy the manifest **last**, then remove stale keys. Its presence is a completion marker only for readers that check it.
 
 ```python
+        preexisting_final_keys = set()
+        if config.overwrite == "replace":
+            preexisting_final_keys = set(
+                client.list_keys(config.output_bucket, config.curated_prefix + "/")
+            )
+            if manifest_key in preexisting_final_keys:
+                client.delete_keys(config.output_bucket, [manifest_key])
+                if client.exists(config.output_bucket, manifest_key):
+                    raise RuntimeError("Could not remove the old manifest; refusing to replace.")
+
         try:
             for item in files:
                 final_key = _final_key(config, item["relative_key"])
+                if final_key not in preexisting_final_keys:
+                    published_keys.append(final_key)
                 client.copy(
                     config.output_bucket,
                     config.staging_key(item["relative_key"]),
                     final_key,
                 )
-                published_keys.append(final_key)
-            client.copy(
-                config.output_bucket,
-                manifest_staging_key,
-                manifest_key,
-            )
-            published_keys.append(manifest_key)
+            if manifest_key not in preexisting_final_keys:
+                published_keys.append(manifest_key)
+            client.copy(config.output_bucket, manifest_staging_key, manifest_key)
         except Exception:
-            logger.error("Publish failed; rolling back %d copied objects.", len(published_keys))
-            client.delete_keys(config.output_bucket, published_keys)
+            rollback_keys = [key for key in published_keys if key not in preexisting_final_keys]
+            client.delete_keys(config.output_bucket, rollback_keys)
             raise
 ```
 
@@ -1041,12 +1050,12 @@ What was changed and what is still open:
 | --- | --- | --- |
 | Before upload (parse error, timeout) | Nothing in `curated/` | Fix and resubmit |
 | During staging upload | Partial `_staging/run_id=X/`; `finally` deletes it | Lifecycle rule removes anything left after 1 day |
-| During final copy | Some data keys may already be visible in S3 and Athena; rollback is best-effort | Do not query; validator fails without the manifest. Inspect objects before recovery |
+| During final copy | Some data keys may already be visible in S3 and Athena; rollback removes only newly created keys | Do not query; validator fails without the manifest. Inspect objects before recovery |
 | After manifest copy | New manifest is present; data copy phase completed | Compare the manifest with S3/Athena counts |
 | SIGKILL during staging | Possibly staging objects | Lifecycle rule removes abandoned staging keys |
 | SIGKILL during final copy | Partial final data may remain without a manifest and is still directly queryable | Do not query; inspect and recover the partition before retrying |
 
-Rollback deletes are best-effort. `delete_keys` logs a warning instead of raising, so it cannot mask the original error. The manifest does not prevent direct readers from seeing partial output during publication or after a failed rollback. With `OVERWRITE=replace`, a rollback can delete keys that had *overwritten* previous objects. The pipeline does not restore earlier versions; S3 versioning keeps them for manual recovery.
+Rollback deletes are best-effort. `delete_keys` logs a warning instead of raising, so it cannot mask the original error. The manifest does not prevent direct readers from seeing partial output during publication or after a failed rollback. In `OVERWRITE=replace`, the old manifest is removed before copies begin, and rollback never deletes keys that existed before the run. Overwritten data can remain without a manifest; S3 versioning keeps prior versions for manual recovery.
 
 ### 7.5 Earlier failures worth knowing about
 
@@ -1270,7 +1279,7 @@ For a sense of scale only: an earlier London run in the same account (`london-20
 
 **Idempotency.** The output location depends only on `(output_prefix, region, ymd, entity, file index)`. The output content depends only on the input file and settings. Re-running the same input with `OVERWRITE=replace` therefore produces the same keys. `OVERWRITE=error` turns accidental re-runs into fast failures (exit 4) before any download.
 
-**Partial failures.** Manifest-last publication lets cooperating readers reject a partition until `_manifest.json` exists (§7.4). It does not gate Athena queries or S3 listings; those can expose partial data. The validation script checks for the manifest, but direct clients must apply the same rule. Concurrent jobs and non-atomic `replace` remain separate gaps.
+**Partial failures.** Manifest-last publication lets cooperating readers reject a partition until `_manifest.json` exists (§7.4). It does not gate Athena queries or S3 listings; those can expose partial data. The validation script checks for the manifest, but direct clients must apply the same rule. Replace now removes the old marker before copying and preserves pre-existing keys during rollback, but it is still not an atomic transaction; these changes are implemented in the repository and have not been verified in AWS.
 
 **Lifecycle.** Raw extracts (30 d), staging (1 d), noncurrent curated versions (30 d), Athena results (14 d) and incomplete multipart uploads (7 d) all expire automatically (§5.1). ECR keeps 30 tagged images and expires untagged images after 14 days. CloudWatch Logs retention is 30 days.
 

@@ -39,10 +39,11 @@
     in the new manifest and not the manifest itself) are deleted after the new
     manifest is published.
 
-If publishing fails after some data copies, the pipeline deletes the copied
-final keys. In `replace` mode those keys may have overwritten existing objects;
-the previous manifest can then point at missing objects. S3 versioning retains
-the prior versions for manual recovery, but the pipeline does not restore them
+In `OVERWRITE=replace`, the pipeline records the pre-existing keys and removes
+the old manifest before copying replacement data. If publishing fails, rollback
+deletes only keys that did not exist before the run; overwritten keys remain
+and may contain new data without a manifest. S3 versioning retains prior object
+versions for manual recovery, but the pipeline does not restore them
 automatically. `replace` is not a distributed transaction.
 
 The manifest does not gate S3 or Athena visibility. Direct S3 listings and

@@ -73,6 +73,9 @@ class PipelineResult:
 
 
 Processor = Callable[..., dict[str, int]]
+REPLACE_RECOVERY_COMMAND = (
+    'REGION_NAME="$REGION_NAME" YMD="$YMD" OVERWRITE=replace ./scripts/submit_job.sh'
+)
 
 
 def _default_processor() -> Processor:
@@ -101,8 +104,8 @@ def _check_existing_outputs(
             raise OutputConflictError(
                 "Found output files without a completion manifest under "
                 f"s3://{config.output_bucket}/{config.curated_prefix}/. "
-                "The previous run did not finish. Re-run with OVERWRITE=replace "
-                "to republish the partition."
+                "The previous run did not finish. After reviewing the output, "
+                f"run this recovery command: {REPLACE_RECOVERY_COMMAND}"
             )
         return False
 
@@ -116,7 +119,8 @@ def _check_existing_outputs(
         if existing:
             raise OutputConflictError(
                 f"Output already exists under s3://{config.output_bucket}/"
-                f"{config.curated_prefix}/. Set OVERWRITE=skip or OVERWRITE=replace."
+                f"{config.curated_prefix}/. Set OVERWRITE=skip or run the recovery "
+                f"command: {REPLACE_RECOVERY_COMMAND}"
             )
     return False
 
@@ -284,31 +288,46 @@ def run_pipeline(
         staging_uploaded.append(manifest_staging_key)
 
         final_data_keys = {_final_key(config, item["relative_key"]) for item in files}
+        preexisting_final_keys: set[str] = set()
         stale_keys: list[str] = []
         if config.overwrite == "replace":
-            existing = client.list_keys(config.output_bucket, config.curated_prefix + "/")
+            preexisting_final_keys = set(
+                client.list_keys(config.output_bucket, config.curated_prefix + "/")
+            )
             stale_keys = [
-                key for key in existing if key not in final_data_keys and key != manifest_key
+                key
+                for key in preexisting_final_keys
+                if key not in final_data_keys and key != manifest_key
             ]
+            if manifest_key in preexisting_final_keys:
+                client.delete_keys(config.output_bucket, [manifest_key])
+                if client.exists(config.output_bucket, manifest_key):
+                    raise RuntimeError(
+                        "Could not remove the previous completion manifest; "
+                        "refusing to replace data while it remains visible."
+                    )
 
         try:
             for item in files:
                 final_key = _final_key(config, item["relative_key"])
+                if final_key not in preexisting_final_keys:
+                    published_keys.append(final_key)
                 client.copy(
                     config.output_bucket,
                     config.staging_key(item["relative_key"]),
                     final_key,
                 )
-                published_keys.append(final_key)
+            if manifest_key not in preexisting_final_keys:
+                published_keys.append(manifest_key)
             client.copy(
                 config.output_bucket,
                 manifest_staging_key,
                 manifest_key,
             )
-            published_keys.append(manifest_key)
         except Exception:
             logger.error("Publish failed; rolling back %d copied objects.", len(published_keys))
-            client.delete_keys(config.output_bucket, published_keys)
+            rollback_keys = [key for key in published_keys if key not in preexisting_final_keys]
+            client.delete_keys(config.output_bucket, rollback_keys)
             raise
 
         if stale_keys:

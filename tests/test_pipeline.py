@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -15,10 +16,23 @@ INPUT_KEY = "region=monaco/ymd=20261108/monaco-20261108.osm.pbf"
 
 
 class FakeS3:
-    def __init__(self, objects=None, copy_fail_key: str | None = None):
+    def __init__(
+        self,
+        objects=None,
+        copy_fail_key: str | None = None,
+        delete_fail_keys: set[str] | None = None,
+    ):
         self.objects = dict(objects or {})
         self.copy_fail_key = copy_fail_key
+        self.delete_fail_keys = delete_fail_keys or set()
         self.deleted: list[str] = []
+        self.events: list[dict[str, Any]] = []
+
+    def _manifest_present(self):
+        return any(
+            "/_staging/" not in key and "/ymd=" in key and key.endswith("/_manifest.json")
+            for key in self.objects
+        )
 
     def head(self, bucket, key):
         return {"bytes": len(self.objects[key]), "etag": ""}
@@ -39,12 +53,28 @@ class FakeS3:
         self.objects[key] = Path(local_path).read_bytes()
 
     def copy(self, bucket, source_key, destination_key):
+        self.events.append(
+            {
+                "action": "copy",
+                "key": destination_key,
+                "manifest_present": self._manifest_present(),
+            }
+        )
         if self.copy_fail_key == destination_key:
             raise RuntimeError("simulated copy failure")
         self.objects[destination_key] = self.objects[source_key]
 
     def delete_keys(self, bucket, keys):
+        self.events.append(
+            {
+                "action": "delete",
+                "keys": list(keys),
+                "manifest_present": self._manifest_present(),
+            }
+        )
         for key in keys:
+            if key in self.delete_fail_keys:
+                continue
             self.objects.pop(key, None)
             self.deleted.append(key)
 
@@ -158,8 +188,12 @@ def test_skip_mode_rejects_stray_output(tmp_path: Path):
     stale_key = "curated/region=monaco/ymd=20261108/entity=nodes/part-00000.parquet"
     fake = FakeS3({INPUT_KEY: b"pbf-bytes", stale_key: b"stale"})
 
-    with pytest.raises(OutputConflictError):
+    with pytest.raises(OutputConflictError) as raised:
         run_pipeline(config, s3=fake, processor=_processor())
+
+    assert (
+        'REGION_NAME="$REGION_NAME" YMD="$YMD" OVERWRITE=replace ' "./scripts/submit_job.sh"
+    ) in str(raised.value)
 
 
 def test_replace_mode_removes_stale_objects(tmp_path: Path):
@@ -173,6 +207,92 @@ def test_replace_mode_removes_stale_objects(tmp_path: Path):
     assert result.status == "success"
     assert stale_key not in fake.objects
     assert result.manifest_key in fake.objects
+    stale_delete = next(
+        event for event in fake.events if event["action"] == "delete" and stale_key in event["keys"]
+    )
+    assert stale_delete["manifest_present"] is True
+
+
+def test_replace_removes_old_manifest_before_copying_data(tmp_path: Path):
+    config = _config(tmp_path, OVERWRITE="replace")
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes", manifest_key: b"old-manifest"})
+
+    run_pipeline(config, s3=fake, processor=_processor())
+
+    manifest_delete = next(
+        index
+        for index, event in enumerate(fake.events)
+        if event["action"] == "delete" and manifest_key in event["keys"]
+    )
+    first_final_copy = next(
+        index
+        for index, event in enumerate(fake.events)
+        if event["action"] == "copy" and event["key"].startswith(config.curated_prefix)
+    )
+    assert manifest_delete < first_final_copy
+    assert fake.events[first_final_copy]["manifest_present"] is False
+
+
+def test_replace_failure_mid_copy_leaves_no_manifest(tmp_path: Path):
+    config = _config(tmp_path, OVERWRITE="replace")
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    failing_key = (
+        f"{config.output_prefix}/{config.entity_relative_prefix('ways')}/part-00000.parquet"
+    )
+    fake = FakeS3(
+        {INPUT_KEY: b"pbf-bytes", manifest_key: b"old-manifest"},
+        copy_fail_key=failing_key,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated copy failure"):
+        run_pipeline(config, s3=fake, processor=_processor())
+
+    assert manifest_key not in fake.objects
+
+
+def test_replace_rollback_does_not_delete_preexisting_data_keys(tmp_path: Path):
+    config = _config(tmp_path, OVERWRITE="replace")
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    node_key = f"{config.output_prefix}/{config.entity_relative_prefix('nodes')}/part-00000.parquet"
+    way_key = f"{config.output_prefix}/{config.entity_relative_prefix('ways')}/part-00000.parquet"
+    fake = FakeS3(
+        {
+            INPUT_KEY: b"pbf-bytes",
+            manifest_key: b"old-manifest",
+            node_key: b"old-node",
+            way_key: b"old-way",
+        },
+        copy_fail_key=way_key,
+    )
+
+    with pytest.raises(RuntimeError, match="simulated copy failure"):
+        run_pipeline(config, s3=fake, processor=_processor())
+
+    assert node_key in fake.objects
+    assert fake.objects[node_key] != b"old-node"
+    assert fake.objects[way_key] == b"old-way"
+    assert node_key not in fake.deleted
+    assert way_key not in fake.deleted
+    assert manifest_key not in fake.objects
+
+
+def test_replace_stops_if_old_manifest_cannot_be_removed(tmp_path: Path):
+    config = _config(tmp_path, OVERWRITE="replace")
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    fake = FakeS3(
+        {INPUT_KEY: b"pbf-bytes", manifest_key: b"old-manifest"},
+        delete_fail_keys={manifest_key},
+    )
+
+    with pytest.raises(RuntimeError, match="refusing to replace data"):
+        run_pipeline(config, s3=fake, processor=_processor())
+
+    assert manifest_key in fake.objects
+    assert not any(
+        event["action"] == "copy" and event["key"].startswith(config.curated_prefix)
+        for event in fake.events
+    )
 
 
 def test_publish_failure_rolls_back_new_objects(tmp_path: Path):

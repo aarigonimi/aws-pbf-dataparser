@@ -54,8 +54,10 @@ it has not been verified against the live IAM policy.
 
 `OVERWRITE=error` returns exit code 4 when a manifest or stray output exists.
 Use `skip` only when the existing manifest denotes the desired completed
-output. `replace` is not atomic; inspect and preserve the existing manifest and
-S3 versions before using it.
+output. `replace` is not atomic: save the old manifest and review object
+versions before using it. The replacement removes the old manifest first; if
+the job fails, the partition may remain without a manifest and must not be
+queried until recovery completes.
 
 ## Athena cannot resolve projected partitions
 
