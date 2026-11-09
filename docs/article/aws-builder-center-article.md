@@ -33,9 +33,9 @@ By the end of this article you will have:
 
 - A Python processor that **streams** a PBF file with PyOsmium into memory-bounded PyArrow Parquet writers.
 - A non-root Docker image for that processor, pushed to Amazon ECR.
-- Terraform for S3 (raw and curated buckets), ECR, AWS Batch on Fargate, IAM, VPC endpoints, CloudWatch Logs, a Glue crawler and an Athena workgroup.
+- Terraform for S3 (raw and curated buckets), ECR, AWS Batch on Fargate, IAM, VPC endpoints, CloudWatch Logs, a Glue Data Catalog table and an Athena workgroup.
 - A safe publication protocol: stage, copy, then write the manifest last.
-- A validation loop: S3 manifest → Glue crawler → Athena counts compared with the manifest.
+- A validation loop: S3 manifest → projected Glue table → Athena counts compared with the manifest.
 
 The verified end state for Quebec looks like this:
 
@@ -81,7 +81,7 @@ flowchart LR
     JOB -->|PyOsmium SimpleHandler| SINKS[ParquetSink x3]
     SINKS -->|upload| STAGE[(curated/_staging/run_id=X/)]
     STAGE -->|copy data, then _manifest.json last| CURATED[(curated/region=R/ymd=D/entity=E/)]
-    CURATED --> CRAWLER[AWS Glue crawler] --> CATALOG[Glue Data Catalog] --> ATHENA[Amazon Athena]
+    CURATED --> CATALOG[Glue projected table] --> ATHENA[Amazon Athena]
 ```
 
 | Service | Responsibility in this project | Why this service | Alternatives considered | Trade-off accepted |
@@ -91,7 +91,7 @@ flowchart LR
 | **Python + PyOsmium** | Streaming PBF decode with callbacks per node/way/relation | The C++ libosmium parser behind a simple Python handler API; no full materialization | `osmium-tool` CLI export, Java/Osmosis, Spark readers | Single-threaded Python callbacks become the throughput limit (see §10). |
 | **PyArrow** | Explicit-schema Parquet with Snappy, row groups and file rotation | Standard columnar format readable by Athena and Glue | GeoParquet, ORC, CSV | Geometry stored as WKT text, not native geometry. |
 | **Amazon S3 (curated)** | Staging prefix, final partitions, manifest, Athena results | Single bucket with lifecycle rules per prefix | Separate buckets per stage | Prefix-scoped IAM and lifecycle rules must stay in sync. |
-| **AWS Glue crawler** | Infers the table schema and creates catalog tables | No hand-written DDL to keep in sync with the writer | Athena `CREATE EXTERNAL TABLE`, partition projection | The crawler creates one table per leaf location, so a second region/date gets a hash-suffixed table (§8). |
+| **AWS Glue Data Catalog** | Stores the explicit `osm_curated` schema and projected partitions | One stable table covers all region/date/entity prefixes | A crawler or manual partition registration | Projection avoids crawler-created leaf tables; `region` and `ymd` must be constrained in each query. This Terraform change is not deployed or AWS-verified yet. |
 | **Amazon Athena** | SQL validation and analytics | Serverless, pay per query, reads the Glue catalog | Redshift Spectrum, local DuckDB | Athena results land in S3 and need their own lifecycle rule. |
 | **CloudWatch Logs** | Application logs with run ID, timings and counts | Native `awslogs` driver on Batch | Firehose to S3 | Logs are text, so metrics are extracted by reading the log lines. |
 | **ECR** | Stores the job image | Same-region pulls through private endpoints | Docker Hub | Needs endpoints or internet egress, which is exactly what failed first (§7). |
@@ -645,7 +645,6 @@ A lifecycle policy expires untagged images after `ecr_untagged_retention_days` (
 | `*-batch-job-role` | `ecs-tasks.amazonaws.com` | What the Python code needs: read `raw/region=*`, read/write/delete `curated/<output_prefix>/*` |
 | `*-batch-service-role` | `batch.amazonaws.com` | AWS managed `AWSBatchServiceRole` |
 | `*-ecs-instance-role` | `ec2.amazonaws.com` | `AmazonEC2ContainerServiceforEC2Role` (only used in EC2 mode) |
-| `*-glue-crawler-role` | `glue.amazonaws.com` | `AWSGlueServiceRole` + read-only on `curated/<output_prefix>/*` |
 
 The split between **execution role** and **job role** is the part people most often get wrong. The execution role is used by the Fargate agent *before* your code starts, to pull the image and create log streams. The job role is the credential boto3 sees *inside* the container. These are the actual S3 statement fragments from `aws_iam_policy.batch_job_policy`:
 
@@ -850,7 +849,7 @@ Then build and push the image with the **same** tag (§4). The job definition ca
 
 `terraform.tfvars`, `*.tfstate*`, `*.tfplan` and `.terraform/` are in `.gitignore`. Local state contains bucket names, ARNs and role IDs. For a team, start from `infrastructure/backend.tf.example`, an S3 backend with encryption and lockfile.
 
-The outputs you will use next are `raw_bucket_name`, `curated_bucket_name`, `batch_job_queue_name`, `batch_job_definition_name`, `ecr_repository_url`, `glue_crawler_name`, `glue_database_name`, `athena_workgroup_name` and `cloudwatch_log_group_name`.
+The outputs you will use next are `raw_bucket_name`, `curated_bucket_name`, `batch_job_queue_name`, `batch_job_definition_name`, `ecr_repository_url`, `glue_database_name`, `glue_table_name`, `athena_workgroup_name` and `cloudwatch_log_group_name`.
 
 The deployment identity needs permission to create and manage the stack's S3, ECR, IAM, Batch, EC2 security-group/VPC-endpoint, CloudWatch, Glue and Athena resources, plus `iam:PassRole` for the roles it creates. Organizations commonly constrain role creation with permission boundaries or service control policies; have an account administrator review those requirements before running `apply`. The Batch execution role and job role are runtime identities and do not need long-lived credentials in the container.
 
@@ -943,7 +942,7 @@ Parameter semantics:
 | Variable | Effect |
 | --- | --- |
 | `RAW_KEY` | Input object in the raw bucket. The PBF is never passed on the command line. |
-| `OUTPUT_PREFIX` | Root of the curated layout (`curated`). It must match Terraform's `output_prefix`, because IAM and the crawler are scoped to it. |
+| `OUTPUT_PREFIX` | Root of the curated layout (`curated`). It must match Terraform's `output_prefix`, because IAM and the projected table location are scoped to it. |
 | `RUN_ID` | Names the staging prefix and is written to the manifest and every log line. Use a unique value per submission. |
 | `OVERWRITE=error` | Default. Fails with exit 4 if the partition has a manifest or any objects. |
 | `OVERWRITE=skip` | Exits 0 if a manifest exists. Fails if objects exist without a manifest (a previous partial run). |
@@ -1059,60 +1058,25 @@ The Terraform now derives `platform_capabilities` from `batch_compute_type` and 
 
 ---
 
-## 8. Cataloging the output with AWS Glue
+## 8. A stable Glue table with partition projection
 
-The crawler definition targets the curated root and excludes paths that are not data:
+The previous catalog setup created leaf-level tables instead of one queryable partitioned table. I replaced it in Terraform with a single external table named `osm_curated` in the `osm_catalog` database. Its columns match the explicit Arrow schema in §3.4, with string partition keys `region`, `ymd` and `entity`.
+
+The table uses Parquet input/output formats and the `ParquetHiveSerDe`. Its projection parameters are:
 
 ```hcl
-resource "aws_glue_crawler" "osm_crawler" {
-  name          = var.glue_crawler_name
-  role          = aws_iam_role.glue_crawler_role.arn
-  database_name = aws_glue_catalog_database.osm_catalog.name
-
-  s3_target {
-    path       = "s3://${aws_s3_bucket.curated.bucket}/${var.output_prefix}/"
-    exclusions = ["_staging/**", "athena-results/**"]
-  }
-
-  schema_change_policy {
-    delete_behavior = "DEPRECATE_IN_DATABASE"
-    update_behavior = "UPDATE_IN_DATABASE"
-  }
-
-  recrawl_policy {
-    recrawl_behavior = "CRAWL_EVERYTHING"
-  }
-
-  tags = var.tags
-
-  depends_on = [
-    aws_glue_catalog_database.osm_catalog,
-    aws_iam_role_policy_attachment.glue_crawler_policy_attachment,
-    aws_iam_role_policy_attachment.glue_service_role,
-  ]
-}
+"projection.enabled"       = "true"
+"projection.region.type"   = "injected"
+"projection.ymd.type"      = "injected"
+"projection.entity.type"   = "enum"
+"projection.entity.values" = "nodes,ways,relations"
 ```
 
-It has no schedule. Run it after a manifest appears, so it never catalogs a partition that is still publishing:
+`storage.location.template` points to `s3://<curated>/<output_prefix>/region=$${region}/ymd=$${ymd}/entity=$${entity}/`. Injected values avoid maintaining a region or date catalog list; the enum bounds the entity partition to the three directories the writer creates. Since region and date are injected, queries must provide equality filters for both.
 
-```bash
-GLUE_CRAWLER="$(terraform -chdir=infrastructure output -raw glue_crawler_name)"
-aws glue start-crawler --name "$GLUE_CRAWLER" --region "$AWS_REGION"
-aws glue get-crawler --name "$GLUE_CRAWLER" --region "$AWS_REGION" \
-  --query 'Crawler.{state:State,last:LastCrawl.Status}'
-aws glue get-tables --database-name osm_catalog --region "$AWS_REGION" \
-  --query 'TableList[].{name:Name,location:StorageDescriptor.Location}'
-```
+The table is declared by `infrastructure/glue.tf`; there is no crawler to run. **This replacement is implemented in the repository but has not been deployed or verified in AWS.** The existing historical Glue crawler observations below describe the previous setup, not the new table. The manifest is not a catalog gate: query only after `_manifest.json` exists, and compare Athena results with it.
 
-How the Parquet becomes discoverable: the crawler reads Parquet footers and gets the explicit Arrow schema from §3.4 back as Glue columns (`osm_id bigint`, `node_refs array<bigint>`, `tags string`, ...). Because all three entity folders share one schema, the column types are identical across tables.
-
-What I actually observed, and what you should expect:
-
-- After Quebec, the crawler (state `READY`, last crawl `SUCCEEDED`) created `entity_nodes`, `entity_ways`, `entity_relations` and `_manifest_json`.
-- After a second partition (London) was added, it created **hash-suffixed** tables such as `entity_nodes_475f49b0e46299847b95d3752c6de279` instead of adding partitions. The crawler makes a table per leaf location when the path structure does not let it group them.
-- `_manifest_json` is cataloged, but Athena returns zero rows for it: the underlying reader skips files whose names start with `_`. **Read the manifest from S3**, not through Athena.
-
-For a single snapshot, the leaf tables work fine. For multi-region or multi-date analytics, the next step is one partition-aware table over `region=`/`ymd=`/`entity=`. You can get that through crawler table-level grouping, or with an Athena DDL using partition projection. I have not deployed or tested either, so this article does not show one.
+Use the Terraform database/table outputs and the SQL in `sql/athena/validate_entity_counts.sql`. The multi-region validation query is shown in §9. The explicit schema lets one query cover all three entity directories.
 
 ---
 
@@ -1148,7 +1112,7 @@ Every query therefore writes SSE-S3 encrypted results to `s3://<curated-bucket>/
 
 ### 9.1 Entity counts versus the manifest
 
-This query comes from Athena's execution history (`97ba421d...`, state `SUCCEEDED`, engine time 1,054 ms). Only the line breaks were added:
+The historical Quebec query ran before the partition-projected table was implemented (execution `97ba421d...`, state `SUCCEEDED`, engine time 1,054 ms). Its results are evidence from the former crawler-created tables, not a validation of the new table:
 
 ```sql
 SELECT 'nodes' AS entity, COUNT(*) AS records FROM osm_catalog.entity_nodes
@@ -1182,7 +1146,7 @@ aws athena get-query-execution --query-execution-id "$QID" \
 aws athena get-query-results --query-execution-id "$QID" --query 'ResultSet.Rows[].Data[].VarCharValue'
 ```
 
-If the crawler suffixed your table names (§8), substitute the names from `aws glue get-tables`.
+The current repository query in `sql/athena/validate_entity_counts.sql` uses `osm_catalog.osm_curated` and filters on both injected partitions. That query has not been run in AWS.
 
 ### 9.2 File inventory consistency
 
@@ -1199,7 +1163,10 @@ For Quebec, S3 lists **497** `.parquet` objects totaling 6,454,025,948 bytes. Th
 Query `029f222d...` (4,355,155 bytes scanned, 862 ms):
 
 ```sql
-SELECT osm_type, osm_id, geometry, tags FROM osm_catalog.entity_nodes LIMIT 5
+SELECT osm_type, osm_id, geometry, tags
+FROM osm_catalog.osm_curated
+WHERE region = 'quebec' AND ymd = '20261108' AND entity = 'nodes'
+LIMIT 5
 ```
 
 ```text
@@ -1218,20 +1185,23 @@ Some more useful analytical queries over the same tables (not part of the record
 ```sql
 -- Road network composition
 SELECT highway, count(*) AS ways
-FROM osm_catalog.entity_ways
-WHERE highway IS NOT NULL
+FROM osm_catalog.osm_curated
+WHERE region = 'quebec' AND ymd = '20261108'
+  AND entity = 'ways' AND highway IS NOT NULL
 GROUP BY highway ORDER BY ways DESC LIMIT 15;
 
 -- Points of interest by amenity, using a promoted column instead of JSON parsing
 SELECT amenity, count(*) AS nodes
-FROM osm_catalog.entity_nodes
-WHERE amenity IS NOT NULL
+FROM osm_catalog.osm_curated
+WHERE region = 'quebec' AND ymd = '20261108'
+  AND entity = 'nodes' AND amenity IS NOT NULL
 GROUP BY amenity ORDER BY nodes DESC LIMIT 15;
 
 -- Fall back to the full tag JSON for anything not promoted
 SELECT osm_id, json_extract_scalar(tags, '$.cuisine') AS cuisine
-FROM osm_catalog.entity_nodes
-WHERE amenity = 'restaurant' LIMIT 20;
+FROM osm_catalog.osm_curated
+WHERE region = 'quebec' AND ymd = '20261108'
+  AND entity = 'nodes' AND amenity = 'restaurant' LIMIT 20;
 ```
 
 ---
@@ -1313,7 +1283,7 @@ For a sense of scale only: an earlier London run in the same account (`london-20
 3. Interface VPC endpoints: billed per endpoint per AZ per hour **while they exist**, even when no job runs.
 4. S3 storage for raw, curated and noncurrent versions.
 5. S3 requests: 497 PUTs + 497 COPYs + deletes per run.
-6. Glue crawler DPU time, Athena bytes scanned and CloudWatch Logs ingestion.
+6. Glue Data Catalog metadata, Athena bytes scanned and CloudWatch Logs ingestion.
 
 I am deliberately not putting a dollar figure on any of these. Measure with Cost Explorer filtered by the `Project = osm-pbf-data-lake` tag.
 

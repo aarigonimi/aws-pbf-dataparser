@@ -15,7 +15,7 @@ formulas, not quotes. Check the current AWS pricing pages for your region.
 | Data transfer | GB | Cross-region or NAT egress; same-region S3 access is typically free |
 | NAT gateway (optional) | Hour + GB processed | Not created by this module; needed for private subnets without endpoints |
 | CloudWatch Logs | Ingestion GB + storage | Retention is configured |
-| Glue crawler | DPU-hour | On demand, not scheduled |
+| Glue Data Catalog | Table metadata storage | The projected table is defined by Terraform; no crawler job is required |
 | Athena | TB scanned | Partition/column pruning matters |
 | ECR | GB-month | Lifecycle policy expires old images |
 
@@ -44,8 +44,6 @@ wall-clock duration alone.
 - Use `OVERWRITE=skip` in retries so completed partitions do not reprocess.
 - Use partition pruning (`region`, `ymd`) in Athena and set
   `athena_bytes_scanned_cutoff`.
-- Run the Glue crawler on demand or on a schedule that matches publishing, not
-  continuously.
 - For large, interruption-tolerant batches, use EC2 Spot
   (`batch_compute_type = EC2`, `batch_use_spot = true`) and configure
   `spot_iam_fleet_role_arn`. Spot savings vary and can be interrupted; the job

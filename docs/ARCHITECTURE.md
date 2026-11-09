@@ -9,11 +9,11 @@
 | Batch job definition | Container image, vCPU/memory, env defaults, retries, timeout, log config |
 | Batch job queue | Schedules jobs onto the compute environment |
 | S3 curated bucket | Staging, final Parquet, manifests, Athena results |
-| Glue crawler + database | Catalog for the curated prefix |
+| Glue database + projected table | Explicit Parquet schema and partition projection for the curated prefix |
 | Athena workgroup | Query results location, encryption, optional scan cutoff |
 | CloudWatch Logs | One log group per stack, retention configured |
 | ECR | Container image repository with lifecycle cleanup |
-| IAM roles | Execution role, job role, Batch service role, EC2 instance role, Glue role |
+| IAM roles | Execution role, job role, Batch service role and optional EC2 instance role |
 
 ## Data flow
 
@@ -32,7 +32,7 @@
 7. Data objects are copied to their final keys under
    `<prefix>/region=<region>/ymd=<ymd>/entity=<entity>/`.
 8. The manifest is copied to its final key **last**. A final manifest is the
-   completion marker for the partition.
+   completion marker for readers that check it before querying.
 9. Staging objects are deleted on a best-effort basis; the lifecycle rule is
    the fallback for abandoned staging objects.
 10. In `OVERWRITE=replace`, stale objects under the partition prefix (keys not
@@ -45,10 +45,15 @@ the previous manifest can then point at missing objects. S3 versioning retains
 the prior versions for manual recovery, but the pipeline does not restore them
 automatically. `replace` is not a distributed transaction.
 
+The manifest does not gate S3 or Athena visibility. Direct S3 listings and
+Athena queries can observe partial or mixed data while publication is in
+progress or after a failed rollback. Query a partition only after its final
+`_manifest.json` exists and validate its counts against that manifest.
+
 ## Why staging plus a manifest
 
-- Readers can use the presence of `_manifest.json` as a commit marker instead
-  of racing with partially uploaded files.
+- Readers that check for `_manifest.json` before querying can use it as a
+  completion marker. It does not block direct S3 listings or Athena queries.
 - `OVERWRITE=error` refuses to clobber an existing manifest or stray data.
 - `OVERWRITE=skip` treats a manifest as proof of completion and fails when data
   exists without a manifest (a partial previous run).
@@ -107,7 +112,7 @@ SIGTERM handlers allow the process to stop cooperatively and be retried.
 | `ecr.tf` | Repository, scanning, encryption, lifecycle policy |
 | `iam.tf` | Roles, policies, attachments |
 | `batch.tf` | Log group, compute environment, queue, job definition |
-| `glue.tf` | Catalog database and crawler over the curated prefix |
+| `glue.tf` | Catalog database and partition-projected `osm_curated` table |
 | `athena.tf` | Workgroup, results location, encryption, scan cutoff |
 | `outputs.tf` | Names/URIs consumed by scripts and docs |
 
@@ -126,7 +131,8 @@ endpoint association to include it.
 - Batch job role: read raw and manage objects under the configured curated prefix.
 - Batch execution role: pull the project ECR image and write to the Batch log group.
 - Batch service role: AWS managed `AWSBatchServiceRole`.
-- Glue role: curated read + `AWSGlueServiceRole`.
+- Glue Data Catalog table: explicit dataset schema and projected
+  `region`/`ymd`/`entity` locations. No crawler role or crawler is required.
 - EC2 instance role/profile exists for optional EC2 compute mode.
 - S3 buckets block public access and deny non-TLS requests.
 - No secrets are placed in environment variables; workloads use IAM roles.
@@ -136,7 +142,7 @@ endpoint association to include it.
 ## Extension points
 
 - Add an EventBridge Scheduler or Step Functions state machine to submit jobs
-  and crawl after success.
+  and query after the partition manifest appears.
 - Add a compaction job to merge small part files per partition.
 - Add OSM diff (`.osc.gz`) application for incremental updates.
 - Reconstruct relation geometry from member ways if required.

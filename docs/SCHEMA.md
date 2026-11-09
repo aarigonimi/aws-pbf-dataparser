@@ -69,12 +69,16 @@ singular values (`node`, `way`, `relation`).
 - Per-file entity, final S3 key, bytes, records.
 - Processor counts and timings.
 
-Consumers should treat the manifest, not the presence of a random Parquet file,
-as the completion signal.
+Readers should query a partition only after its final manifest exists. Athena
+does not use the manifest as a visibility gate; direct queries can observe
+partial output during publication.
 
 ## Athena DDL example
 
-The Glue crawler creates tables. A manual table for one date/region looks like:
+Terraform creates `osm_catalog.osm_curated` with this explicit schema and
+partition projection. The `region` and `ymd` projection types are `injected`,
+so queries must supply both equality filters. `entity` is an enum of the three
+supported partition directories:
 
 ```sql
 CREATE EXTERNAL TABLE IF NOT EXISTS osm_catalog.osm_curated (
@@ -97,16 +101,28 @@ CREATE EXTERNAL TABLE IF NOT EXISTS osm_catalog.osm_curated (
 )
 PARTITIONED BY (region string, ymd string, entity string)
 STORED AS PARQUET
-LOCATION 's3://<curated-bucket>/curated/';
+LOCATION 's3://<curated-bucket>/curated/'
+TBLPROPERTIES (
+  'projection.enabled' = 'true',
+  'projection.region.type' = 'injected',
+  'projection.ymd.type' = 'injected',
+  'projection.entity.type' = 'enum',
+  'projection.entity.values' = 'nodes,ways,relations',
+  'storage.location.template' = 's3://<curated-bucket>/curated/region=${region}/ymd=${ymd}/entity=${entity}/'
+);
 ```
 
-Add partitions with `MSCK REPAIR TABLE` or let the Glue crawler do it. Filter by
-`entity` when you want a single element type:
+The Terraform table uses the same data columns and partition keys, with
+projection parameters and an S3 location template. Filter by `entity` when you
+want a single element type:
 
 ```sql
 SELECT * FROM osm_catalog.osm_curated
 WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'nodes';
 ```
+
+This projected table is implemented in the repository but has not been
+deployed or verified in AWS.
 
 ## Databricks
 

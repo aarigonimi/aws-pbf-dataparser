@@ -30,18 +30,12 @@ Check `status`, `region`, `ymd`, `run_id`, `record_counts`, `total_records`,
 duration and Batch start/stop timestamps include more of the run.
 
 The manifest path begins with an underscore. Read it directly from S3; Athena
-may skip it as an input file even if a crawler creates a Glue table for it.
+does not use it as a gate. **Query a partition only after its final
+`_manifest.json` exists.** Partition projection makes the partition queryable
+without crawler registration, so it does not prevent early readers from seeing
+partially published objects.
 
 ## Glue and Athena
-
-Start the crawler after the manifest appears:
-
-```bash
-GLUE_CRAWLER="$(terraform -chdir=infrastructure output -raw glue_crawler_name)"
-aws glue start-crawler --name "$GLUE_CRAWLER" --region "$AWS_REGION"
-aws glue get-crawler --name "$GLUE_CRAWLER" --region "$AWS_REGION" \
-  --query 'Crawler.State' --output text
-```
 
 Use the workgroup and database Terraform outputs:
 
@@ -50,31 +44,35 @@ ATHENA_WORKGROUP="$(terraform -chdir=infrastructure output -raw athena_workgroup
 GLUE_DATABASE="$(terraform -chdir=infrastructure output -raw glue_database_name)"
 ```
 
-In the Athena console, select that workgroup and database, then run:
+The `osm_curated` table is declared in Terraform with the explicit Parquet
+schema and partition projection. Its `region` and `ymd` partitions use the
+`injected` projection type, so every query must supply equality filters for
+both. `entity` is projected from `nodes,ways,relations`. The table change is
+implemented in the repository but has **not been deployed or verified in AWS**.
+
+In the Athena console, select that workgroup and database, and after confirming
+the S3 manifest exists, run:
 
 ```sql
 SHOW TABLES IN osm_catalog;
 
-SELECT count(*) AS nodes FROM entity_nodes;
-SELECT count(*) AS ways FROM entity_ways;
-SELECT count(*) AS relations FROM entity_relations;
+SELECT entity, count(*) AS records
+FROM osm_curated
+WHERE region = 'monaco' AND ymd = '20261108'
+GROUP BY entity;
 
 SELECT osm_type, count(*) AS entities
-FROM entity_ways
+FROM osm_curated
+WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'ways'
 GROUP BY osm_type;
 
 SELECT osm_id, name, highway, tags
-FROM entity_ways
+FROM osm_curated
+WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'ways'
 LIMIT 10;
 ```
 
-Replace database/table identifiers with the names produced by your crawler;
-conflicting crawls can add suffixes. Compare the three counts with
-`record_counts` in the S3 manifest. Check Athena query execution details for
-state, bytes scanned and engine time. Use the configured workgroup so its
-result location and scan cutoff apply.
-
-The current crawler creates tables at entity leaf paths. For one snapshot, the
-tables above work directly. For multi-date analysis, create a partition-aware
-Athena table over the `region=`/`ymd=`/`entity=` layout instead of relying on
-the per-leaf tables the crawler creates.
+Compare the three counts with `record_counts` in the S3 manifest. Check Athena
+query execution details for state, bytes scanned and engine time. Use the
+configured workgroup so its result location and scan cutoff apply. Always
+include both injected partition predicates to constrain projection and scans.

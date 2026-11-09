@@ -45,7 +45,7 @@ flowchart LR
     APP --> STAGE[S3 curated staging]
     STAGE --> CURATED[S3 curated region/date/entity]
     JOB --> LOGS[CloudWatch Logs]
-    CURATED --> GLUE[AWS Glue crawler]
+    CURATED --> GLUE[Glue projected table]
     GLUE --> ATHENA[Amazon Athena]
 ```
 
@@ -58,13 +58,14 @@ See the [architecture description](docs/ARCHITECTURE.md),
 | Amazon S3 | Separate raw input and curated output; staging and manifests |
 | AWS Batch on Fargate | Queued, containerized regional processing with retries and timeout |
 | Amazon ECR | Versioned processor image with scan-on-push |
-| AWS IAM | Separate job, execution, Batch service, EC2 and Glue roles |
+| AWS IAM | Separate job, execution, Batch service and optional EC2 roles |
 | Amazon CloudWatch Logs | Batch container logs with configurable retention |
-| AWS Glue | Database and on-demand crawler for curated Parquet |
+| AWS Glue | Explicit schema and partition-projected `osm_curated` table |
 | Amazon Athena | SQL validation with a configured workgroup and optional scan cutoff |
 
 The decisions explain why Batch was selected, how PBF data is represented, and
-what the S3 publication marker guarantees. No comparative Lambda/ECS cost or
+what the S3 publication marker guarantees. The projected table is implemented
+but has not been deployed or verified in AWS. No comparative Lambda/ECS cost or
 performance test was performed.
 
 ## Repository layout
@@ -121,8 +122,8 @@ Follow these guides in order:
 3. [Upload an extract and submit a job](docs/execution.md): select a region,
    extract date, raw S3 key and unique run ID; use `OVERWRITE=error` for a new
    partition.
-4. [Validate output](docs/validation.md): inspect S3, read the manifest, run
-   the Glue crawler, and compare Athena counts.
+4. [Validate output](docs/validation.md): inspect S3, read the manifest, and
+   compare Athena counts through the projected `osm_curated` table.
 5. [Clean up](docs/cleanup.md): review the destroy plan and confirm
    infrastructure removal. S3 object versions are not removed by the cleanup
    script.
@@ -211,15 +212,17 @@ remaining publication and live-verification steps.
 
 - [Cost considerations](docs/COST.md): service meters, sizing and cost capture.
 - [Troubleshooting](docs/troubleshooting.md): ECR/VPC endpoints, IAM, output
-  conflicts and Glue crawler behavior.
+  conflicts and Athena validation.
 - [Cleanup](docs/cleanup.md): interactive infrastructure destroy, S3 version
   retention, delete markers and continuing charges.
 - [Security policy](SECURITY.md): credentials, state and vulnerability reports.
 
 The S3 gateway endpoint is associated with the VPC main route table; custom
 subnets may need explicit endpoint routing. Batch egress is open by default.
-The Glue crawler creates leaf-level tables, not a unified partitioned table
-across all dates. The project processes full snapshots; it does not apply OSM
+Glue partition projection is configured for `osm_curated`: queries must filter
+on `region` and `ymd`, while `entity` is projected from its three-value enum.
+This table change is implemented in the repository but has not been deployed or
+verified in AWS. The project processes full snapshots; it does not apply OSM
 diffs, compact files or reconstruct relation geometry.
 
 ## Data attribution

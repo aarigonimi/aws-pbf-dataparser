@@ -34,7 +34,7 @@ output "curated_bucket_name" {
 }
 
 output "curated_prefix_uri" {
-  description = "S3 URI crawled by Glue and queried by Athena."
+  description = "S3 URI cataloged by Glue and queried by Athena."
   value       = "s3://${aws_s3_bucket.curated.bucket}/${var.output_prefix}/"
 }
 
@@ -48,9 +48,9 @@ output "glue_database_name" {
   value       = aws_glue_catalog_database.osm_catalog.name
 }
 
-output "glue_crawler_name" {
-  description = "Glue crawler name."
-  value       = aws_glue_crawler.osm_crawler.name
+output "glue_table_name" {
+  description = "Partition-projected Glue table for curated Parquet."
+  value       = aws_glue_catalog_table.osm_curated.name
 }
 
 output "raw_bucket_name" {

@@ -1,9 +1,10 @@
--- Run in the osm_catalog database and the project's configured Athena workgroup.
-SELECT 'nodes' AS entity, count(*) AS records FROM entity_nodes
-UNION ALL
-SELECT 'ways', count(*) FROM entity_ways
-UNION ALL
-SELECT 'relations', count(*) FROM entity_relations;
+-- Run in the osm_catalog database and configured Athena workgroup.
+-- Partition projection requires exact region and ymd filters.
+SELECT entity, count(*) AS records
+FROM osm_curated
+WHERE region = 'quebec' AND ymd = '20261108'
+GROUP BY entity
+ORDER BY entity;
 
--- Compare these values with record_counts in the S3 _manifest.json.
--- The Glue crawler can suffix table names if multiple locations collide.
+-- Query only after the partition's _manifest.json exists, then compare these
+-- counts with record_counts in that S3 manifest.

@@ -68,9 +68,15 @@ Terraform creates:
 - VPC security group and, for Fargate, ECR/Logs interface endpoints and an S3
   gateway endpoint. The stack uses an existing VPC and does not create a NAT
   gateway or subnets.
-- Glue database/crawler and an Athena workgroup with a results prefix and an
+- Glue database and partition-projected Parquet table, plus an Athena workgroup with a results prefix and an
   optional scan cutoff. The cutoff defaults to disabled (`0`); set a nonzero
   `athena_bytes_scanned_cutoff` to enforce one.
+
+The projected table replaces the previous crawler configuration in this
+repository. This change has not been deployed or verified in AWS. For an
+existing stack, inspect the Terraform plan for crawler removal and creation of
+`osm_curated` before applying it; the historical benchmark records describe the
+earlier catalog setup.
 
 Inspect outputs:
 

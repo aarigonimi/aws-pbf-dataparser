@@ -92,7 +92,6 @@ terraform import aws_batch_job_definition.osm_job osm-pbf-data-lake-job
 terraform import aws_batch_job_queue.osm_queue osm-pbf-data-lake-job-queue
 terraform import aws_ecr_repository.batch osm-pbf-batch
 terraform import aws_glue_catalog_database.osm_catalog osm_catalog
-terraform import aws_glue_crawler.osm_crawler osm-pbf-data-lake-crawler
 terraform import aws_security_group.batch <security-group-id>
 terraform import aws_s3_bucket.raw <raw-bucket-name>
 terraform import aws_s3_bucket.curated <curated-bucket-name>

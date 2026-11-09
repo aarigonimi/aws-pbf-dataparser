@@ -83,32 +83,6 @@ resource "aws_iam_policy" "batch_execution_logs" {
   })
 }
 
-resource "aws_iam_policy" "glue_crawler_policy" {
-  name        = "${var.project_name}-glue-crawler-policy"
-  description = "Read access for the Glue crawler over the curated bucket."
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "ListCuratedPrefix"
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = aws_s3_bucket.curated.arn
-        Condition = {
-          StringLike = { "s3:prefix" = ["${var.output_prefix}/*"] }
-        }
-      },
-      {
-        Sid      = "ReadCuratedObjects"
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = "${aws_s3_bucket.curated.arn}/${var.output_prefix}/*"
-      },
-    ]
-  })
-}
-
 resource "aws_iam_role" "batch_execution_role" {
   name = "${var.project_name}-batch-execution-role"
 
@@ -169,21 +143,6 @@ resource "aws_iam_role" "ecs_instance_role" {
   tags = var.tags
 }
 
-resource "aws_iam_role" "glue_crawler_role" {
-  name = "${var.project_name}-glue-crawler-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect    = "Allow"
-      Principal = { Service = "glue.amazonaws.com" }
-      Action    = "sts:AssumeRole"
-    }]
-  })
-
-  tags = var.tags
-}
-
 resource "aws_iam_role_policy_attachment" "batch_execution_policy_attachment" {
   role       = aws_iam_role.batch_execution_role.name
   policy_arn = aws_iam_policy.batch_execution_logs.arn
@@ -202,14 +161,4 @@ resource "aws_iam_role_policy_attachment" "batch_service_policy" {
 resource "aws_iam_role_policy_attachment" "ecs_instance_policy" {
   role       = aws_iam_role.ecs_instance_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
-}
-
-resource "aws_iam_role_policy_attachment" "glue_crawler_policy_attachment" {
-  role       = aws_iam_role.glue_crawler_role.name
-  policy_arn = aws_iam_policy.glue_crawler_policy.arn
-}
-
-resource "aws_iam_role_policy_attachment" "glue_service_role" {
-  role       = aws_iam_role.glue_crawler_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole"
 }

@@ -49,12 +49,15 @@ Use `skip` only when the existing manifest denotes the desired completed
 output. `replace` is not atomic; inspect and preserve the existing manifest and
 S3 versions before using it.
 
-## Glue tables do not appear or have suffixes
+## Athena cannot resolve projected partitions
 
-Wait for the crawler to finish and inspect its last crawl summary. The crawler
-may create suffixed tables when multiple region/date leaf paths share a
-database. Inspect `aws glue get-tables` and use the generated table names in
-Athena. The manifest itself should be read directly from S3.
+The Terraform-defined `osm_curated` table uses injected partition projection
+for `region` and `ymd`. Every query must include equality predicates for both,
+for example `WHERE region = 'quebec' AND ymd = '20261108'`. Check the Glue table
+parameters, its S3 location template, and that the query uses the configured
+database. This table change is implemented in the repository but has not been
+deployed or verified in AWS. Query only after the final `_manifest.json`
+exists; Athena does not use the manifest as a gate.
 
 ## Terraform reports an existing resource or state drift
 

@@ -335,12 +335,6 @@ variable "glue_database_name" {
   default     = "osm_catalog"
 }
 
-variable "glue_crawler_name" {
-  description = "Glue crawler name."
-  type        = string
-  default     = "osm-pbf-data-lake-crawler"
-}
-
 variable "tags" {
   description = "Tags applied to all taggable resources."
   type        = map(string)

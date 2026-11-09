@@ -22,8 +22,7 @@ flowchart LR
     JOB -->|PyOsmium SimpleHandler| SINKS[ParquetSink x3<br/>nodes / ways / relations]
     SINKS -->|upload| STAGE[(S3 curated<br/>curated/_staging/run_id=X/)]
     STAGE -->|copy data, then _manifest.json last| CURATED[(S3 curated<br/>curated/region=R/ymd=D/entity=E/)]
-    CURATED --> CRAWLER[AWS Glue crawler]
-    CRAWLER --> CATALOG[Glue Data Catalog<br/>osm_catalog]
+    CURATED --> CATALOG[Glue projected table<br/>osm_catalog.osm_curated]
     CATALOG --> ATHENA[Amazon Athena<br/>osm-pbf-workgroup]
     ATHENA -->|results| RESULTS[(S3 curated<br/>athena-results/)]
     TF -.provisions.-> RAW & ECR & QUEUE & EP_ECR & EP_LOGS & EP_S3 & CRAWLER & ATHENA
