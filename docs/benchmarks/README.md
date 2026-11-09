@@ -20,6 +20,7 @@ Derived parse rates: Quebec **26,885.6 entities/s**
 scaling study.
 
 Both historical runs used the older writer, which rotated at 300,000 rows.
+The current code rotates at 250,000 rows and has not been run in AWS.
 Current code rotates at 250,000 rows and has not been run in AWS.
 
 The London run was already complete when this audit began. No London job was
@@ -37,16 +38,12 @@ The Quebec manifest duration is measured before the final S3 publication.
 CloudWatch recorded 5,894.62 seconds from the application start to completion;
 AWS Batch recorded 5,922.575 seconds from `startedAt` to `stoppedAt`.
 
-## How to capture the next run
+## Benchmark protocol for the next run
 
-After a successful job, preserve the exact `_manifest.json` values and record
-the AWS Batch job ID and attempts, job definition revision and image digest,
-CloudWatch logs, Athena execution ID/count results/bytes scanned, and any
-available cost allocation data. Keep actual AWS prices separate from estimates.
-The application manifest already captures source bytes, counts, compression,
-file inventory and byte sizes, run ID, and parse/download/total durations.
-For a prospective run, also record immutable image tag and digest, Git SHA,
-AWS Batch job ID and attempts, peak CPU/RSS from Container Insights, Athena
-execution ID and bytes scanned, and actual cost allocations by `Project` tag.
-Those prospective fields are not available for the historical runs unless
-listed in their JSON records.
+For one clean, single-job run, preserve the manifest, immutable image digest,
+AWS Batch job ID and attempts, peak RSS and CPU from Container Insights, Athena
+execution ID and bytes scanned, and actual cost from Cost Explorer filtered by
+the Terraform `Project` tag. Keep uncollected values `null`; do not infer cost,
+resource peaks or runtime image digests. The application manifest captures
+source bytes, counts, compression, file inventory, run ID, and parse/download/
+total durations.

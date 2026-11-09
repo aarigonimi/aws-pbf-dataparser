@@ -34,12 +34,12 @@ The goal is a pipeline that turns one regional PBF snapshot into **typed, compre
 By the end of this article you will have:
 
 - A Python processor that **streams** a PBF file with PyOsmium into memory-bounded PyArrow Parquet writers.
-- A non-root Docker image for that processor, pushed to Amazon ECR.
+- A non-root Docker image for that processor, intended for Amazon ECR.
 - Terraform for S3 (raw and curated buckets), ECR, AWS Batch on Fargate, IAM, VPC endpoints, CloudWatch Logs, a Glue Data Catalog table and an Athena workgroup.
 - A safe publication protocol: stage, copy, then write the manifest last.
 - A validation loop: S3 manifest → projected Glue table → Athena counts compared with the manifest.
 
-The verified end state for Quebec looks like this:
+The historical Quebec output looked like this:
 
 ```text
 s3://<curated-bucket>/curated/region=quebec/ymd=20261108/
@@ -1351,7 +1351,7 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 
 - A streaming PBF → Parquet processor that turned a 1.17 GB Quebec extract into **148,698,370 entities in 497 Parquet files (6.45 GB)** on a single 2-vCPU / 8 GiB Fargate task in about 1 h 39 min of Batch time.
 - Terraform for the full stack: S3, ECR, IAM, Batch, VPC endpoints, CloudWatch, Glue and Athena. Terraform formatting passes locally. Provider initialization and validation could not run in this review because the registry was unavailable and the cached provider binaries would not start; no plan or apply was run.
-- A publication protocol that keeps partial output out of the curated layout, and a manifest that Athena counts match row for row.
+- A publication protocol that stages data before final keys; the manifest provides a completion signal only to readers that check for it. Athena counts in the historical Quebec run matched its manifest row for row.
 - A test suite with 139 passing tests at the end of task 8, including an end-to-end run over a generated PBF. The Dockerfile and build scripts are included, but the image was not built in this review because the Docker daemon was unavailable.
 
 **What the experience taught:**
@@ -1361,7 +1361,7 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 3. A pre-flight "does the output exist?" check is not a lock. Two jobs will happily both pass it.
 4. Record the image digest and the exact writer settings with every benchmark. Otherwise a later code fix (the 300,000-row historical rotation) silently invalidates comparisons.
 
-**Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, no relation geometry, WKT instead of native geometry, small output files, and no cost data. The new AccessDenied/throttling classification and partition-projected Glue table are implemented in the repository but have not been verified in AWS.
+**Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, no relation geometry, WKT instead of native geometry, small output files, and no cost data. The partition-projected Glue table, S3 error classification, safer replace behavior, and early staging uploads are implemented in the repository but have not been verified in AWS.
 
 **Next improvements**, roughly in order of value:
 

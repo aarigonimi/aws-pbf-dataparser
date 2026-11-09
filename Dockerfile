@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
+# TODO: Pin both Python base images by digest once the desired linux/amd64
+# digests can be resolved and recorded. Registry access was unavailable here.
+ARG PYTHON_BASE=python:3.12-slim
+
 # Build wheels in a disposable stage so the runtime image stays small.
-FROM python:3.12-slim AS builder
+FROM ${PYTHON_BASE} AS builder
 
 ENV PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
@@ -20,7 +24,7 @@ COPY requirements.txt ./
 RUN pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
 
 
-FROM python:3.12-slim AS runtime
+FROM ${PYTHON_BASE} AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
