@@ -6,15 +6,42 @@ from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from src.errors import AccessDeniedError, InputError, TransientError
+from src.errors import AccessDeniedError, InputError, OsmPipelineError, TransientError
 
 logger = logging.getLogger(__name__)
 
 _MISSING_CODES = {"404", "NoSuchKey", "NotFound", "NoSuchBucket"}
+_ACCESS_DENIED_CODES = {
+    "403",
+    "AccessDenied",
+    "AllAccessDisabled",
+    "InvalidAccessKeyId",
+    "SignatureDoesNotMatch",
+}
+_TRANSIENT_CODES = {
+    "SlowDown",
+    "RequestTimeout",
+    "InternalError",
+    "InternalFailure",
+    "ServiceUnavailable",
+    "Throttling",
+    "ThrottlingException",
+}
 
 
 def _error_code(exc: ClientError) -> str:
     return str(exc.response.get("Error", {}).get("Code", ""))
+
+
+def _translate_client_error(exc: ClientError, context: str) -> OsmPipelineError:
+    code = _error_code(exc)
+    status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    if code in _ACCESS_DENIED_CODES or status == 403:
+        return AccessDeniedError(f"{context}: {exc}")
+    if code in _TRANSIENT_CODES or (isinstance(status, int) and 500 <= status < 600):
+        return TransientError(f"{context}: {exc}")
+    # Preserve retry behavior for S3 errors not explicitly classified above.
+    return TransientError(f"{context}: {exc}")
 
 
 class S3Client:
@@ -53,7 +80,8 @@ class S3Client:
         except ClientError as exc:
             if _error_code(exc) in _MISSING_CODES:
                 raise InputError(f"Input object s3://{bucket}/{key} was not found.") from exc
-            raise TransientError(f"Failed to download s3://{bucket}/{key}: {exc}") from exc
+            error = _translate_client_error(exc, f"Failed to download s3://{bucket}/{key}")
+            raise error from exc
         except (BotoCoreError, OSError) as exc:
             raise TransientError(f"Failed to download s3://{bucket}/{key}: {exc}") from exc
 
@@ -68,7 +96,8 @@ class S3Client:
         except ClientError as exc:
             if _error_code(exc) in _MISSING_CODES:
                 return False
-            raise TransientError(f"Failed to check s3://{bucket}/{key}: {exc}") from exc
+            error = _translate_client_error(exc, f"Failed to check s3://{bucket}/{key}")
+            raise error from exc
         except BotoCoreError as exc:
             raise TransientError(f"Failed to check s3://{bucket}/{key}: {exc}") from exc
 
@@ -78,10 +107,9 @@ class S3Client:
         except ClientError as exc:
             if _error_code(exc) in _MISSING_CODES:
                 raise InputError(f"Object s3://{bucket}/{key} was not found.") from exc
-            if _error_code(exc) in {"403", "AccessDenied"}:
-                raise AccessDeniedError(
-                    f"Access denied inspecting s3://{bucket}/{key}: {exc}"
-                ) from exc
+            error = _translate_client_error(exc, f"Failed to inspect s3://{bucket}/{key}")
+            raise error from exc
+        except BotoCoreError as exc:
             raise TransientError(f"Failed to inspect s3://{bucket}/{key}: {exc}") from exc
         return {
             "bytes": int(response.get("ContentLength", 0)),
@@ -96,7 +124,8 @@ class S3Client:
                 for item in page.get("Contents", []):
                     keys.append(item["Key"])
         except ClientError as exc:
-            raise TransientError(f"Failed to list s3://{bucket}/{prefix}: {exc}") from exc
+            error = _translate_client_error(exc, f"Failed to list s3://{bucket}/{prefix}")
+            raise error from exc
         except BotoCoreError as exc:
             raise TransientError(f"Failed to list s3://{bucket}/{prefix}: {exc}") from exc
         return keys
@@ -109,7 +138,12 @@ class S3Client:
                 key,
                 ExtraArgs={"ContentType": "application/octet-stream"},
             )
-        except (ClientError, BotoCoreError, OSError) as exc:
+        except ClientError as exc:
+            error = _translate_client_error(
+                exc, f"Failed to upload {local_path} to s3://{bucket}/{key}"
+            )
+            raise error from exc
+        except (BotoCoreError, OSError) as exc:
             raise TransientError(
                 f"Failed to upload {local_path} to s3://{bucket}/{key}: {exc}"
             ) from exc
@@ -122,10 +156,11 @@ class S3Client:
                 Key=destination_key,
             )
         except ClientError as exc:
-            raise TransientError(
-                f"Failed to copy s3://{bucket}/{source_key} to "
-                f"s3://{bucket}/{destination_key}: {exc}"
-            ) from exc
+            error = _translate_client_error(
+                exc,
+                f"Failed to copy s3://{bucket}/{source_key} to s3://{bucket}/{destination_key}",
+            )
+            raise error from exc
         except BotoCoreError as exc:
             raise TransientError(f"Failed to copy s3://{bucket}/{source_key}: {exc}") from exc
 

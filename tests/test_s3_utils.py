@@ -1,18 +1,21 @@
 from pathlib import Path
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EndpointConnectionError
 
 from src.errors import AccessDeniedError, InputError, TransientError
 from src.s3_utils import S3Client
 
 
-def _client_error(code: str) -> ClientError:
-    return ClientError({"Error": {"Code": code, "Message": code}}, "TestOperation")
+def _client_error(code: str, status: int | None = None) -> ClientError:
+    response = {"Error": {"Code": code, "Message": code}}
+    if status is not None:
+        response["ResponseMetadata"] = {"HTTPStatusCode": status}
+    return ClientError(response, "TestOperation")
 
 
 class FakeBotoClient:
-    def __init__(self, error: ClientError | None = None):
+    def __init__(self, error: BaseException | None = None):
         self.objects: dict[str, bytes] = {}
         self.error = error
         self.uploaded: list[tuple[str, str]] = []
@@ -60,11 +63,14 @@ class FakeBotoClient:
 
         class Paginator:
             def paginate(self, Bucket, Prefix):
+                if self_error:
+                    raise self_error
                 keys = [key for key in sorted(objects) if key.startswith(Prefix)]
                 if not keys:
                     return [{}]
                 return [{"Contents": [{"Key": key} for key in keys]}]
 
+        self_error = self.error
         return Paginator()
 
     def delete_objects(self, Bucket, Delete):
@@ -117,6 +123,91 @@ def test_head_throttling_and_server_errors_are_transient(code: str):
 
     with pytest.raises(TransientError):
         client.head("bucket", "key")
+
+
+def test_unknown_http_5xx_is_transient():
+    client = S3Client(
+        region="us-east-1",
+        client=FakeBotoClient(error=_client_error("ServiceFailure", status=503)),
+    )
+
+    with pytest.raises(TransientError):
+        client.head("bucket", "key")
+
+
+@pytest.mark.parametrize(
+    "code",
+    ["403", "AccessDenied", "AllAccessDisabled", "InvalidAccessKeyId", "SignatureDoesNotMatch"],
+)
+@pytest.mark.parametrize("operation", ["download", "head", "exists", "list", "upload", "copy"])
+def test_access_denied_is_non_retryable_for_all_s3_operations(
+    tmp_path: Path, operation: str, code: str
+):
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error(code)))
+    source = tmp_path / "part.parquet"
+    source.write_bytes(b"data")
+
+    with pytest.raises(AccessDeniedError) as raised:
+        if operation == "download":
+            client.download("bucket", "input.pbf", tmp_path / "input.pbf")
+        elif operation == "head":
+            client.head("bucket", "key")
+        elif operation == "exists":
+            client.exists("bucket", "key")
+        elif operation == "list":
+            client.list_keys("bucket", "prefix/")
+        elif operation == "upload":
+            client.upload(source, "bucket", "staging/part.parquet")
+        else:
+            client.copy("bucket", "staging/source.parquet", "final/part.parquet")
+
+    assert raised.value.exit_code == 5
+
+
+@pytest.mark.parametrize("operation", ["download", "head", "exists", "list", "upload", "copy"])
+def test_botocore_transport_errors_are_transient(tmp_path: Path, operation: str):
+    failure = EndpointConnectionError(endpoint_url="https://s3.example.invalid")
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=failure))
+    source = tmp_path / "part.parquet"
+    source.write_bytes(b"data")
+
+    with pytest.raises(TransientError):
+        if operation == "download":
+            client.download("bucket", "input.pbf", tmp_path / "input.pbf")
+        elif operation == "head":
+            client.head("bucket", "key")
+        elif operation == "exists":
+            client.exists("bucket", "key")
+        elif operation == "list":
+            client.list_keys("bucket", "prefix/")
+        elif operation == "upload":
+            client.upload(source, "bucket", "staging/part.parquet")
+        else:
+            client.copy("bucket", "staging/source.parquet", "final/part.parquet")
+
+
+@pytest.mark.parametrize("code", ["SlowDown", "RequestTimeout", "500", "503", "InternalError"])
+@pytest.mark.parametrize("operation", ["download", "head", "exists", "list", "upload", "copy"])
+def test_throttling_and_server_errors_are_transient_for_all_s3_operations(
+    tmp_path: Path, operation: str, code: str
+):
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error(code)))
+    source = tmp_path / "part.parquet"
+    source.write_bytes(b"data")
+
+    with pytest.raises(TransientError):
+        if operation == "download":
+            client.download("bucket", "input.pbf", tmp_path / "input.pbf")
+        elif operation == "head":
+            client.head("bucket", "key")
+        elif operation == "exists":
+            client.exists("bucket", "key")
+        elif operation == "list":
+            client.list_keys("bucket", "prefix/")
+        elif operation == "upload":
+            client.upload(source, "bucket", "staging/part.parquet")
+        else:
+            client.copy("bucket", "staging/source.parquet", "final/part.parquet")
 
 
 def test_download_writes_file_and_rejects_empty(tmp_path: Path):

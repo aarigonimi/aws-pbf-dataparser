@@ -306,7 +306,7 @@ Config(
 )
 ```
 
-Errors are translated at this boundary. A missing input object becomes `InputError` (exit 3, not retried). Every other `ClientError`, `BotoCoreError` or local `OSError` that survives botocore's own retries becomes `TransientError` (exit 75, retried by Batch). That is deliberately coarse. It also means an `AccessDenied` caused by a broken IAM policy is retried up to the attempt limit before the job fails. Refining that mapping is listed as a P2 improvement. Downloads and uploads use boto3's managed transfer (`download_file`/`upload_file`), so large objects use multipart transfers automatically. Publication uses `copy_object`, which is a server-side copy limited to 5 GB per object. That limit is irrelevant here because a Quebec file averages about 13 MB.
+Errors are translated at this boundary. A missing input becomes `InputError` (exit 3). Authorization codes (`AccessDenied`, `AllAccessDisabled`, `InvalidAccessKeyId`, and `SignatureDoesNotMatch`) become `AccessDeniedError` (exit 5, not retried); throttling, server errors and botocore transport failures become `TransientError` (exit 75, retried). The mapping is covered by fake-client tests but has not been verified under the deployed AWS IAM policy. Downloads and uploads use boto3's managed transfer (`download_file`/`upload_file`), so large objects use multipart transfers automatically. Publication uses `copy_object`, which is a server-side copy limited to 5 GB per object. That limit is irrelevant here because a Quebec file averages about 13 MB.
 
 ### 3.7 The pipeline: download, parse, manifest, stage, publish
 
@@ -1347,15 +1347,15 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 3. A pre-flight "does the output exist?" check is not a lock. Two jobs will happily both pass it.
 4. Record the image digest and the exact writer settings with every benchmark. Otherwise a later code fix (the 300,000-row rotation) silently invalidates comparisons.
 
-**Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, leaf-level Glue tables instead of one partitioned table, no relation geometry, WKT instead of native geometry, small output files, coarse error classification (`AccessDenied` is retried), and a single benchmark run with no cost data.
+**Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, no relation geometry, WKT instead of native geometry, small output files, and no cost data. The new AccessDenied/throttling classification and partition-projected Glue table are implemented in the repository but have not been verified in AWS.
 
 **Next improvements**, roughly in order of value:
 
 1. A DynamoDB conditional-write lock per `region#ymd`, taken inside `run_pipeline()`.
 2. Immutable image tags by default, with the image digest written into the manifest.
-3. A partitioned Athena table (partition projection on `region`/`ymd`/`entity`) instead of leaf tables.
+3. A distributed partition lock and safer replacement semantics.
 4. A vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract, with Cost Explorer data captured.
-5. Separate retryable throttling/5xx errors from `AccessDenied`/4xx in `s3_utils.py`.
+5. Capture image digest, peak CPU/memory, and cost with the next clean run.
 6. GeoParquet output and relation multipolygon assembly.
 
 **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser. It contains everything needed to reproduce this walkthrough: `src/`, `tests/`, `Dockerfile`, `infrastructure/`, `scripts/`, `sql/athena/`, and the benchmark records under `docs/benchmarks/`.
