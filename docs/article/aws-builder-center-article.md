@@ -6,6 +6,8 @@ permalink: /
 ---
 
 > **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser
+
+> **Quick path (about 10 minutes):** For the end-to-end flow, read §§1–2, then jump to §7 for the historical failure and recovery, §10 for measured results, and §13 for lessons and limitations. The complete implementation walkthrough follows for readers who want to build it step by step.
 >
 > All code and configuration below come from that repository. All measurements come from one Quebec run on 2026-11-09. I say where each number came from (the S3 manifest, the AWS Batch API, CloudWatch Logs or Athena query history). No cost figure appears anywhere, because I never collected one.
 
@@ -425,7 +427,7 @@ If the container is killed before `finally` runs (timeout, SIGKILL), staging obj
 
 ### 3.8 Testing it without AWS
 
-The GitHub Actions workflow is configured to run the suite on Python 3.11 and 3.12 without AWS credentials. The current suite has 51 tests across 8 files; all 51 passed in the local Python 3.12 run recorded during this review. The most useful test for readers is `tests/test_end_to_end.py`. It generates a tiny PBF with `scripts/generate_sample_pbf.py` (three nodes, one way, one relation) and runs the full `run_pipeline()` against an in-memory S3 fake:
+The GitHub Actions workflow is configured to run the suite on Python 3.11 and 3.12 without AWS credentials. At the end of the local code changes, 139 tests passed with Python 3.12; the most useful test for readers is `tests/test_end_to_end.py`. It generates a tiny PBF with `scripts/generate_sample_pbf.py` (three nodes, one way, one relation) and runs the full `run_pipeline()` against an in-memory S3 fake:
 
 ```python
 @pytest.mark.parametrize("include_way_geometry", ["false", "true"])
@@ -1243,14 +1245,14 @@ These are calculated from the numbers above, not measured directly:
 
 | Derived metric | Value | Derivation |
 | --- | ---: | --- |
-| Parse throughput | ≈ 26,882 entities/s | 148,698,370 / 5,530.778 |
+| Parse throughput | ≈ 26,885.6 entities/s | 148,698,370 / 5,530.778 |
 | Parse share of application time | ≈ 93.8 % | 5,530.778 / 5,894.62 |
 | Publication phase (staging upload + copies + cleanup) | ≈ 355 s | Log timestamps 06:10:50.582 → 06:16:45.700 |
 | Container start/stop overhead | ≈ 28 s | 5,922.575 − 5,894.62 |
 | Output / input size | ≈ 5.5× | 6,454,025,948 / 1,166,570,375 |
 | Average Parquet file | ≈ 13.0 MB | 6,454,025,948 / 497 |
 
-For a sense of scale only: an earlier London run in the same account (`london-20261109142209`, also verified from its manifest) processed 13,346,901 entities in 549.270 parse seconds, about 24,300 entities/s. It produced 46 files totaling 588,845,591 bytes. Two runs of different sizes landing within roughly 10 % of each other suggests per-entity work dominates. It is not a scaling study.
+For a sense of scale only: an earlier London run in the same account (`london-20261109142209`, also verified from its manifest) processed 13,346,901 entities in 549.270 parse seconds, about 24,299.3 entities/s (`13,346,901 / 549.270`). It produced 46 files totaling 588,845,591 bytes. Two runs of different sizes landing within roughly 10 % of each other suggests per-entity work dominates. It is not a scaling study.
 
 ### 10.3 Interpreting the numbers
 
@@ -1342,27 +1344,26 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 
 ## 13. Conclusion
 
-**What was built and verified:**
+**What the historical Quebec run demonstrated, and what is implemented locally:**
 
 - A streaming PBF → Parquet processor that turned a 1.17 GB Quebec extract into **148,698,370 entities in 497 Parquet files (6.45 GB)** on a single 2-vCPU / 8 GiB Fargate task in about 1 h 39 min of Batch time.
-- Terraform for the full stack: S3, ECR, IAM, Batch, VPC endpoints, CloudWatch, Glue and Athena. Terraform 1.11.4 passed `fmt -check`, `init -backend=false` and `validate` during this review; no plan or apply was run.
+- Terraform for the full stack: S3, ECR, IAM, Batch, VPC endpoints, CloudWatch, Glue and Athena. Terraform formatting passes locally. Provider initialization and validation could not run in this review because the registry was unavailable and the cached provider binaries would not start; no plan or apply was run.
 - A publication protocol that keeps partial output out of the curated layout, and a manifest that Athena counts match row for row.
-- A test suite with 51 passing tests, including an end-to-end run over a generated PBF. The Dockerfile and build scripts are included, but the image was not built in this review because the Docker daemon was unavailable.
+- A test suite with 139 passing tests at the end of task 8, including an end-to-end run over a generated PBF. The Dockerfile and build scripts are included, but the image was not built in this review because the Docker daemon was unavailable.
 
 **What the experience taught:**
 
 1. On Fargate without NAT, the *agent's* dependencies (ECR API, ECR DKR, S3 for layers, Logs) fail before your code can log anything. Read `attempts[].statusReason` first.
 2. AWS Batch retries failures that match no rule. Always finish a retry strategy with an explicit `EXIT`.
 3. A pre-flight "does the output exist?" check is not a lock. Two jobs will happily both pass it.
-4. Record the image digest and the exact writer settings with every benchmark. Otherwise a later code fix (the 300,000-row rotation) silently invalidates comparisons.
+4. Record the image digest and the exact writer settings with every benchmark. Otherwise a later code fix (the 300,000-row historical rotation) silently invalidates comparisons.
 
 **Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, no relation geometry, WKT instead of native geometry, small output files, and no cost data. The new AccessDenied/throttling classification and partition-projected Glue table are implemented in the repository but have not been verified in AWS.
 
 **Next improvements**, roughly in order of value:
 
 1. A DynamoDB conditional-write lock per `region#ymd`, taken inside `run_pipeline()`.
-2. Immutable image tags by default, with the image digest written into the manifest.
-3. A distributed partition lock and safer replacement semantics.
+2. Test the revised replacement semantics in AWS and collect the resolved runtime image digest.
 4. A vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract, with Cost Explorer data captured.
 5. Capture image digest, peak CPU/memory, and cost with the next clean run.
 6. GeoParquet output and relation multipolygon assembly.
@@ -1370,6 +1371,8 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser. It contains everything needed to reproduce this walkthrough: `src/`, `tests/`, `Dockerfile`, `infrastructure/`, `scripts/`, `sql/athena/`, and the benchmark records under `docs/benchmarks/`.
 
 *OpenStreetMap data © OpenStreetMap contributors, available under the Open Database License (ODbL).*
+
+Changes described in this article are implemented in the repository. Changes after the historical Quebec run have not been verified in AWS.
 
 ### References
 

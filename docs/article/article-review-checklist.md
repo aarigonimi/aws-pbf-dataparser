@@ -6,19 +6,19 @@ Use this before submitting `aws-builder-center-article.md` to AWS Builder Center
 
 - [x] Publish this project folder as the root of its own public Git repository. Do not publish the containing workspace.
 - [x] Replace the article's repository placeholders with `https://github.com/aarigonimi/aws-pbf-dataparser` and use `aws-pbf-dataparse` as the local clone directory.
-- [ ] Review the staged publication tree; exclude Terraform state and backups, plans, local tfvars, `.terraform/`, local environment files, PBFs and Parquet outputs.
+- [x] Review the staged publication tree; Git status contains only intended source, docs, tests and workflow changes. Terraform state/backups, plans, local tfvars, `.terraform/`, local environment files, PBFs and Parquet outputs are excluded.
 - [ ] Build the current Docker image and run its documented smoke commands with Docker available.
 - [ ] In a separately approved AWS run, test a new small extract with an immutable image tag and save the job ID, attempts, digest, manifest and Athena counts. Do not use or overwrite the historical Quebec partition.
 
 ## Technical accuracy checked for this draft
 
-- [x] Python 3.12 `make check`: Ruff check, formatting, mypy and 139 passing tests.
+- [x] Python 3.12 `make check`: Ruff check, formatting, mypy and 139 passing tests (before task 9 editorial-only changes).
 - [x] Python compilation and dependency consistency (`compileall`, `pip check`).
 - [ ] Terraform format passed locally, but init/validation could not run because the registry is unreachable and cached provider binaries fail to start; CI validates Fargate and EC2 configurations.
 - [ ] Docker limitation is recorded accurately: daemon unavailable, so the current image build and smoke commands were not run.
 - [x] Historical Quebec counts, sizes and durations are marked by source; derived values show their formulas; costs are unavailable.
 - [x] The ECR network diagnosis is described as a timestamp/configuration correlation, not packet-capture proof.
-- [x] The Quebec overlap, retry history, mutable image tag and untested repository changes are disclosed.
+- [x] The Quebec overlap, retry history, historical mutable image tag, and unverified current repository changes are disclosed.
 - [x] The article preserves the ODbL attribution and does not imply the software license covers OSM data.
 - [x] No Databricks, Delta Lake or Lakebase references were added.
 
@@ -29,6 +29,6 @@ Use this before submitting `aws-builder-center-article.md` to AWS Builder Center
 - [x] No screenshot is included. Scan any future screenshot for account IDs, ARNs, bucket names and query output before publication.
 - [ ] Preview the article in Builder Center and confirm Mermaid renders; if not, export `figures/architecture.mmd` to an image.
 - [ ] Confirm the final event tags and submission length against the current Builder Center instructions.
-- [x] Confirm the public repository URL and record the published revision: `5d812e6`.
+- [x] Confirm the repository URL. The initial public revision is `5d812e6`; later local commits are not pushed.
 
 See [quality-bar assessment](quality-bar-assessment.md) for criterion-by-criterion evidence and current verdict.

@@ -50,7 +50,9 @@
           <span class="meta-separator" aria-hidden="true">·</span>
           <time datetime="2026-11-09">November 9, 2026</time>
           <span class="meta-separator" aria-hidden="true">·</span>
-          <span>50 min read</span>
+          {% assign article_words = content | strip_html | number_of_words %}
+          {% assign read_minutes = article_words | plus: 199 | divided_by: 200 %}
+          <span>{{ read_minutes }} min read</span>
         </div>
         <figure class="route-scene" aria-labelledby="scene-caption">
           <div class="scene-topline">

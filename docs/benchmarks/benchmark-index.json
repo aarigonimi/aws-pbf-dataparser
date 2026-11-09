@@ -23,7 +23,8 @@
       "parquet_files": 46,
       "parquet_bytes": 588845591,
       "parse_seconds": 549.27,
-      "validation": "athena_not_queried"
+      "validation": "athena_not_queried",
+      "throughput_entities_per_parse_second_derived": 24299.3
     }
   ]
 }

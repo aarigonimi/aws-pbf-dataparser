@@ -8,20 +8,20 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 | Step-by-step instructions | **PASS** | Sections 3–9 and 12 cover local validation, AWS setup, deployment, image publishing, job execution, cataloging, queries and cleanup. |
 | Real engineering experience | **PASS** | Section 7 traces the ECR timeout, endpoint correction, retries, overlapping jobs and S3 publication using historical AWS records. |
 | Decisions and trade-offs | **PASS** | Section 2 and the implementation sections explain service choices and trade-offs; three ADRs provide more detail. |
-| Public repository | **PASS** | The project has its own Git root and the article points to `https://github.com/aarigonimi/aws-pbf-dataparser`. |
+| Public repository | **PARTIAL** | The public repository exists and the article points to it, but the current local changes have not been pushed. |
 | Production thinking | **PASS** | Reliability, IAM, network paths, concurrency, partial failures, lifecycle, sizing, observability, costs and limitations are discussed. |
 | Deploy to verify | **PARTIAL** | The historical Quebec implementation ran and was validated. Current audit changes to retry rules, the submission guard and file rotation have not been exercised in AWS; deployment and Batch execution were prohibited for this work. |
 | Cleanup | **PASS** | Section 12 and `scripts/cleanup.sh` describe reviewed Terraform cleanup, retained S3 versions/data, ECR, logs and continuing charges. |
-| Reader outcome | **PARTIAL** | The sequence and validation commands are present, but the missing public repository and unverified current container build prevent a reader from following the article exactly as published. |
+| Reader outcome | **PARTIAL** | The implementation sequence is present. Current Terraform provider validation and Docker build remain unverified locally, and current local commits have not been pushed. |
 
 ## Criterion details
 
 ### Working code/config — PARTIAL
 
 - **Evidence:** Article sections 3–6 and 8–9 show code from `src/osm_parser.py`, `src/parquet_writer.py`, `src/pipeline.py`, `Dockerfile`, `infrastructure/*.tf`, `scripts/*.sh`, `sql/athena/validate_entity_counts.sql`, and the Glue/Athena resources. The architecture figure is in `figures/architecture.mmd`.
-- **Checks run for this draft:** Python 3.12 `make check` passed: Ruff check, Ruff format, mypy, and **51 tests passed**. `compileall` and `pip check` passed. Terraform 1.11.4 `fmt -check`, `init -backend=false`, and `validate` passed. No plan/apply was run.
+- **Checks run for this draft:** Python 3.12 `make check` passed after task 8: Ruff check, Ruff format, mypy, and **139 tests passed**. Task 9 changed editorial/benchmark files only. Terraform formatting passed; init/validation could not run because the registry was unreachable and cached provider binaries would not start. No plan/apply was run.
 - **AWS scope:** No new AWS API calls were made while drafting this article. Quebec measurements and troubleshooting are presented as historical evidence from the existing benchmark record and prior read-only audit, not as a fresh deployment verification.
-- **Gap:** Docker was installed but its daemon was not available. The article now says the Docker build and smoke commands were not run and removes the unsupported local build time and image size claims. The historical ECR size is clearly labelled as registry evidence.
+- **Gap:** Docker was installed but its daemon was not available. The article says the Docker build and smoke commands were not run. The historical ECR size is clearly labelled as registry evidence.
 - **Required improvement:** Run the documented Docker build and smoke commands in an environment with a working daemon before claiming the current image builds.
 
 ### Step-by-step instructions — PASS
@@ -46,7 +46,7 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 
 ### Public repository — PASS
 
-- **Evidence:** The standalone repository is publicly available at `https://github.com/aarigonimi/aws-pbf-dataparser`. The article links to it and uses `aws-pbf-dataparse` as its checkout directory. The published initial revision is `5d812e6`.
+- **Evidence:** The standalone repository is publicly available at `https://github.com/aarigonimi/aws-pbf-dataparser`. The article links to it and uses `aws-pbf-dataparse` as its checkout directory. The published initial revision is `5d812e6`; later commits remain local.
 - **Gap:** None for repository publication.
 - **Required improvement:** None.
 
@@ -72,9 +72,9 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 ### Reader outcome — PARTIAL
 
 - **Evidence:** The article gives the implementation sequence from environment setup through Athena counts and cleanup, with executable commands and configuration examples.
-- **Gap:** The current Docker image build is unverified. The article cannot yet promise a reader a fully reproduced result from the current repository revision.
+- **Gap:** The current Docker image build is unverified, and local commits have not been pushed. The article cannot yet promise a reader a fully reproduced result from the current repository revision.
 - **Required improvement:** Validate the current Docker build. A future authorized AWS smoke run would close the remaining live-verification gap for the current changes.
 
 ## Verdict
 
-**CONDITIONAL PASS — Specific improvements required.** The article has implementation depth and traceable historical evidence, but it is not ready to submit as a self-contained public tutorial until the repository URL exists and the current Docker build is verified. The latest AWS changes also remain untested by design.
+**CONDITIONAL PASS — Specific improvements required.** The article has implementation depth and traceable historical evidence. The current Docker build and Terraform schema validation remain unverified locally; newer AWS behavior also remains untested by design. Push and preview the final revision before submission.

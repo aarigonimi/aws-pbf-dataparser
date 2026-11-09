@@ -28,8 +28,8 @@
     "download_seconds_manifest": 10.214,
     "application_total_duration_seconds_cloudwatch": 5894.62,
     "batch_execution_seconds_aws": 5922.575,
-    "throughput_entities_per_parse_second_derived": 26882.2,
-    "throughput_provenance": "derived from manifest total_records / parse_seconds",
+    "throughput_entities_per_parse_second_derived": 26885.6,
+    "throughput_provenance": "derived from manifest total_records / parse_seconds: 148698370 / 5530.778",
     "duration_note": "Manifest duration ends when the manifest is generated, before final S3 publication and cleanup. CloudWatch's Run complete duration includes publication; Batch startedAt-to-stoppedAt also includes container startup/shutdown.",
     "file_rotation_observation": "The manifest records 300000 rows in most full files. The application default max_records_per_file is 250000 and row_group_size is 100000; the writer previously rotated only on row-group boundaries. The writer was corrected in this repository audit. Existing S3 data was not changed."
   },

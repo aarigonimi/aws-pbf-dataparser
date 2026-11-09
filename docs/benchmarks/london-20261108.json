@@ -25,7 +25,7 @@
     "parse_seconds_manifest": 549.27,
     "download_seconds_manifest": 0.759,
     "batch_execution_seconds_aws": 604.629,
-    "throughput_entities_per_parse_second_derived": 24300.6
+    "throughput_entities_per_parse_second_derived": 24299.3
   },
   "compute": {
     "batch_compute_type": "FARGATE",
