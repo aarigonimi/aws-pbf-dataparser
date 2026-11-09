@@ -33,12 +33,20 @@ def _error_code(exc: ClientError) -> str:
     return str(exc.response.get("Error", {}).get("Code", ""))
 
 
+def _http_status(exc: ClientError) -> int | None:
+    status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    return status if isinstance(status, int) else None
+
+
+_PRECONDITION_FAILED_CODES = {"PreconditionFailed"}
+
+
 def _translate_client_error(exc: ClientError, context: str) -> OsmPipelineError:
     code = _error_code(exc)
-    status = exc.response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+    status = _http_status(exc)
     if code in _ACCESS_DENIED_CODES or status == 403:
         return AccessDeniedError(f"{context}: {exc}")
-    if code in _TRANSIENT_CODES or (isinstance(status, int) and 500 <= status < 600):
+    if code in _TRANSIENT_CODES or (status is not None and 500 <= status < 600):
         return TransientError(f"{context}: {exc}")
     # Preserve retry behavior for S3 errors not explicitly classified above.
     return TransientError(f"{context}: {exc}")
@@ -91,15 +99,42 @@ class S3Client:
 
     def exists(self, bucket: str, key: str) -> bool:
         try:
-            response = self._client.list_objects_v2(Bucket=bucket, Prefix=key, MaxKeys=1)
-            return any(item.get("Key") == key for item in response.get("Contents", []))
+            self._client.head_object(Bucket=bucket, Key=key)
         except ClientError as exc:
-            if _error_code(exc) in _MISSING_CODES:
+            if _error_code(exc) in _MISSING_CODES or _http_status(exc) == 404:
                 return False
             error = _translate_client_error(exc, f"Failed to check s3://{bucket}/{key}")
             raise error from exc
         except BotoCoreError as exc:
             raise TransientError(f"Failed to check s3://{bucket}/{key}: {exc}") from exc
+        return True
+
+    def put(self, bucket: str, key: str, body: bytes, if_none_match: bool = False) -> bool:
+        """Upload a small in-memory object.
+
+        With ``if_none_match=True`` the upload uses an S3 conditional write
+        (``If-None-Match: *``) and returns ``False`` when an object already
+        exists at the key, making it usable as a distributed claim.
+        """
+
+        kwargs: dict[str, Any] = {
+            "Bucket": bucket,
+            "Key": key,
+            "Body": body,
+            "ContentType": "application/octet-stream",
+        }
+        if if_none_match:
+            kwargs["IfNoneMatch"] = "*"
+        try:
+            self._client.put_object(**kwargs)
+        except ClientError as exc:
+            if _error_code(exc) in _PRECONDITION_FAILED_CODES or _http_status(exc) == 412:
+                return False
+            error = _translate_client_error(exc, f"Failed to put s3://{bucket}/{key}")
+            raise error from exc
+        except (BotoCoreError, OSError) as exc:
+            raise TransientError(f"Failed to put s3://{bucket}/{key}: {exc}") from exc
+        return True
 
     def head(self, bucket: str, key: str) -> dict[str, Any]:
         try:

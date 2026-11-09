@@ -23,14 +23,24 @@ class FakeBotoClient:
         self.delete_calls: list[list[str]] = []
         self.head_calls: list[tuple[str, str]] = []
         self.list_calls: list[tuple[str, str, int]] = []
+        self.put_calls: list[tuple[str, str, str | None]] = []
 
     def head_object(self, Bucket, Key):
         self.head_calls.append((Bucket, Key))
         if self.error:
             raise self.error
         if Key not in self.objects:
-            raise _client_error("NoSuchKey")
+            raise _client_error("404")
         return {"ContentLength": len(self.objects[Key]), "ETag": '"etag"'}
+
+    def put_object(self, Bucket, Key, Body, ContentType, IfNoneMatch=None):
+        if self.error:
+            raise self.error
+        if IfNoneMatch is not None and Key in self.objects:
+            raise _client_error("PreconditionFailed", status=412)
+        self.objects[Key] = Body
+        self.put_calls.append((Bucket, Key, IfNoneMatch))
+        return {"ETag": '"etag"'}
 
     def list_objects_v2(self, Bucket, Prefix, MaxKeys):
         self.list_calls.append((Bucket, Prefix, MaxKeys))
@@ -98,14 +108,39 @@ def test_head_other_error_is_transient():
         client.head("bucket", "key")
 
 
-def test_exists_returns_false_for_missing_key():
+def test_exists_uses_head_object_for_exact_key(tmp_path: Path):
     fake = FakeBotoClient()
-    fake.objects["missing.pbf.suffix"] = b"not an exact match"
+    fake.objects["present.parquet"] = b"data"
     client = S3Client(region="us-east-1", client=fake)
 
-    assert client.exists("bucket", "missing.pbf") is False
-    assert fake.list_calls == [("bucket", "missing.pbf", 1)]
-    assert fake.head_calls == []
+    assert client.exists("bucket", "present.parquet") is True
+    assert client.exists("bucket", "missing.parquet") is False
+    assert fake.head_calls == [
+        ("bucket", "present.parquet"),
+        ("bucket", "missing.parquet"),
+    ]
+    assert fake.list_calls == []
+
+
+def test_conditional_put_claim_semantics():
+    fake = FakeBotoClient()
+    client = S3Client(region="us-east-1", client=fake)
+
+    assert client.put("bucket", "lock.json", b"claim", if_none_match=True) is True
+    assert client.put("bucket", "lock.json", b"second", if_none_match=True) is False
+    assert fake.objects["lock.json"] == b"claim"
+
+    assert client.put("bucket", "plain.json", b"data") is True
+    fake.objects["plain.json"] = b"overwritten"
+    assert client.put("bucket", "plain.json", b"again") is True
+    assert fake.objects["plain.json"] == b"again"
+
+
+def test_conditional_put_errors_are_translated():
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error("500")))
+
+    with pytest.raises(TransientError):
+        client.put("bucket", "lock.json", b"claim", if_none_match=True)
 
 
 def test_head_access_denied_is_non_retryable():
