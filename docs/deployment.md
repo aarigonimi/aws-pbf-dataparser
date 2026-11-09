@@ -3,7 +3,7 @@
 ## Prerequisites
 
 - An AWS account and AWS CLI v2 with an authenticated deployment identity.
-- Terraform 1.6 or later.
+- Terraform 1.10 or later.
 - Docker with Buildx support.
 - Python 3.11 or later for local checks; Python 3.12 is used by the container.
 - A region that supports the selected Batch/Fargate configuration.
@@ -34,9 +34,10 @@ cp infrastructure/terraform.tfvars.example infrastructure/terraform.tfvars
 ```
 
 Edit `infrastructure/terraform.tfvars` for the region, compute and storage
-settings. This file is ignored by Git. Choose an image tag once; use the same
-tag for `image_tag` and the image push command. A unique immutable tag is
-recommended. Keep the Terraform provider lock file under version control.
+settings. This file is ignored by Git. Set `image_tag` to a full commit SHA;
+`latest` is rejected and ECR tags are immutable by default. After pushing,
+optionally set `image_digest` to pin the job definition to `repository@sha256:...`.
+Keep the provider lock file under version control.
 
 ```bash
 terraform -chdir=infrastructure init
@@ -92,7 +93,7 @@ Provisioning creates ECR first. Then push the exact image tag configured in
 ```bash
 export ECR_REPOSITORY_URL="$(terraform -chdir=infrastructure output -raw ecr_repository_url)"
 export AWS_REGION="us-east-1"
-export TAG="v0.1.0" # Must equal Terraform's image_tag value.
+export TAG="$(git rev-parse HEAD)" # Must equal Terraform's image_tag value.
 ./scripts/docker_build_push.sh
 ```
 
@@ -101,7 +102,9 @@ Linux/amd64 target. The Docker build context is the repository root. The job
 definition can reference a tag before it has been pushed, but do not submit a
 job until the push succeeds. For a later image, push a new tag and update
 `image_tag` through a reviewed Terraform plan to register a new job definition
-revision.
+revision. The manifest records configured digest and git SHA when available.
+Without an explicit digest, its digest field is null because AWS does not pass
+the resolved image digest into the container environment.
 
 The example base image and OS package repositories are not pinned by digest;
 the Python application dependencies are version-pinned. For bit-for-bit image

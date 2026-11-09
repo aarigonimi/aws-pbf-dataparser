@@ -1,6 +1,8 @@
 resource "aws_iam_instance_profile" "ecs_instance_profile" {
+  count = local.is_ec2 ? 1 : 0
+
   name = "${var.project_name}-ecs-instance-profile"
-  role = aws_iam_role.ecs_instance_role.name
+  role = aws_iam_role.ecs_instance_role[0].name
 }
 
 resource "aws_iam_policy" "batch_job_policy" {
@@ -129,6 +131,8 @@ resource "aws_iam_role" "batch_service_role" {
 }
 
 resource "aws_iam_role" "ecs_instance_role" {
+  count = local.is_ec2 ? 1 : 0
+
   name = "${var.project_name}-ecs-instance-role"
 
   assume_role_policy = jsonencode({
@@ -159,6 +163,7 @@ resource "aws_iam_role_policy_attachment" "batch_service_policy" {
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_instance_policy" {
-  role       = aws_iam_role.ecs_instance_role.name
+  count      = local.is_ec2 ? 1 : 0
+  role       = aws_iam_role.ecs_instance_role[0].name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
 }

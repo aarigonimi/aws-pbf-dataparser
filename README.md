@@ -90,13 +90,15 @@ than split into nested application and Terraform modules.
 - AWS account with deployment permissions for the resources listed in
   [deployment prerequisites](docs/deployment.md), including `iam:PassRole`.
 - AWS CLI v2 authenticated through an approved profile or IAM Identity Center.
-- Terraform 1.6+, Docker with Buildx, and Python 3.11+ for local checks.
+- Terraform 1.10+, Docker with Buildx, and Python 3.11+ for local checks.
 - A regional OSM PBF extract you are licensed to use. The project does not
   download extracts automatically.
 
 Terraform defaults to `us-east-1`, Fargate, 2 vCPU, 8 GiB memory and 100 GiB
 ephemeral storage. Copy `infrastructure/terraform.tfvars.example` to the
-gitignored `infrastructure/terraform.tfvars` and choose a unique image tag.
+gitignored `infrastructure/terraform.tfvars` and set `image_tag` to a full
+commit SHA. `latest` is rejected, and ECR tags are immutable by default. After
+pushing, `image_digest` can pin the job definition to the image digest.
 Runtime options include `REGION_NAME`, `YMD`, `RAW_KEY`, `RUN_ID`,
 `OUTPUT_PREFIX`, `MODE`, `OVERWRITE`, `PARQUET_COMPRESSION`,
 `INCLUDE_WAY_GEOMETRY`, `MAX_RECORDS_PER_FILE`, and `ROW_GROUP_SIZE`.

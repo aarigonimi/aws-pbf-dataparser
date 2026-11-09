@@ -14,7 +14,7 @@ resource "aws_security_group" "vpc_endpoints" {
     from_port       = 443
     to_port         = 443
     protocol        = "tcp"
-    security_groups = [aws_security_group.batch.id]
+    security_groups = [aws_security_group.batch[0].id]
   }
 
   egress {

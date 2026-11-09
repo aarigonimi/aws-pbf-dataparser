@@ -42,7 +42,7 @@ class TransientError(OsmPipelineError):
 
 
 class JobCancelled(OsmPipelineError):
-    """The job received SIGTERM/SIGINT (e.g. Spot interruption).
+    """The job received SIGTERM/SIGINT (for example, scheduler termination).
 
     Treated as retryable so AWS Batch can reschedule the work.
     """

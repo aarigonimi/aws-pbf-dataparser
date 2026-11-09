@@ -62,6 +62,7 @@ singular values (`node`, `way`, `relation`).
 - `status`: `success` when `total_records > 0`, otherwise `empty`.
 - `schema_version`: `1.0.0`.
 - `pipeline_version`.
+- `image_digest` and `git_sha`: configured provenance, or `null` when unset.
 - `region`, `ymd`, `run_id`, timestamps and durations.
 - Source bucket/key/bytes.
 - Output bucket/prefix, compression, overwrite mode, geometry flag, entity list.

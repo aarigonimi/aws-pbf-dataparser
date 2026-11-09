@@ -179,9 +179,24 @@ variable "batch_retry_attempts" {
 }
 
 variable "image_tag" {
-  description = "Container image tag deployed to Batch. Prefer an immutable git SHA tag."
+  description = "Required immutable container image tag deployed to Batch."
   type        = string
-  default     = "latest"
+
+  validation {
+    condition     = trimspace(var.image_tag) != "" && lower(trimspace(var.image_tag)) != "latest"
+    error_message = "image_tag must be a non-empty immutable tag and cannot be latest."
+  }
+}
+
+variable "image_digest" {
+  description = "Optional sha256 image digest. When set, Batch uses the repository digest reference."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.image_digest == "" || can(regex("^sha256:[0-9a-f]{64}$", var.image_digest))
+    error_message = "image_digest must be empty or sha256 followed by 64 lowercase hexadecimal characters."
+  }
 }
 
 variable "ecr_repository_name" {
@@ -193,7 +208,7 @@ variable "ecr_repository_name" {
 variable "ecr_image_tag_mutability" {
   description = "ECR tag mutability. IMMUTABLE is recommended once SHA tags are used."
   type        = string
-  default     = "MUTABLE"
+  default     = "IMMUTABLE"
 
   validation {
     condition     = contains(["MUTABLE", "IMMUTABLE"], var.ecr_image_tag_mutability)

@@ -10,11 +10,12 @@ data "aws_subnets" "default" {
 }
 
 resource "aws_security_group" "batch" {
+  count       = local.is_ec2 ? 1 : 0
   name        = "${var.project_name}-batch-sg"
   description = "Security group for AWS Batch EC2 worker nodes"
   vpc_id      = local.vpc_id
 
-  # Only relevant for EC2 compute environments (node-to-node traffic).
+  # This security group and EC2 peer ingress exist only for EC2 compute.
   ingress {
     description = "Self ingress for EC2 Batch nodes"
     from_port   = 0

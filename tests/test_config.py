@@ -19,6 +19,22 @@ def test_raw_partition_key_uses_region_and_ymd():
     config = JobConfig.from_env(_env())
 
     assert config.raw_partition_key == "region=monaco/ymd=20261108/monaco-20261108.osm.pbf"
+    assert config.image_digest is None
+    assert config.git_sha is None
+
+
+def test_image_provenance_environment_is_optional():
+    config = JobConfig.from_env(_env(JOB_IMAGE_DIGEST="sha256:abc", GIT_SHA="commit-1"))
+
+    assert config.image_digest == "sha256:abc"
+    assert config.git_sha == "commit-1"
+
+
+def test_unset_image_digest_marker_becomes_null():
+    config = JobConfig.from_env(_env(JOB_IMAGE_DIGEST="unset", GIT_SHA="commit-1"))
+
+    assert config.image_digest is None
+    assert config.git_sha == "commit-1"
 
 
 def test_raw_partition_key_preserves_explicit_key():

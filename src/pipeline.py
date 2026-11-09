@@ -248,6 +248,8 @@ def run_pipeline(
             "status": "success" if total_records > 0 else "empty",
             "schema_version": SCHEMA_VERSION,
             "pipeline_version": PIPELINE_VERSION,
+            "image_digest": config.image_digest,
+            "git_sha": config.git_sha,
             "region": config.region_name,
             "ymd": config.ymd,
             "run_id": config.run_id,

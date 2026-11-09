@@ -92,6 +92,8 @@ class JobConfig:
     output_prefix: str
     region_name: str
     run_id: str
+    image_digest: str | None
+    git_sha: str | None
     aws_region: str
     ymd: str
     mode: str = "all"
@@ -147,6 +149,10 @@ class JobConfig:
         output_bucket = _required(source, "OUTPUT_BUCKET")
         region_name = _path_token(source, "REGION_NAME", source.get("REGION", "monaco"))
         run_id = _path_token(source, "RUN_ID", "local-run")
+        image_digest = source.get("JOB_IMAGE_DIGEST", "").strip() or None
+        if image_digest == "unset":
+            image_digest = None
+        git_sha = source.get("GIT_SHA", "").strip() or None
         aws_region = source.get("AWS_REGION", "us-east-1").strip() or "us-east-1"
         output_prefix = source.get("OUTPUT_PREFIX", "curated").strip().strip("/") or "curated"
 
@@ -171,6 +177,8 @@ class JobConfig:
             output_prefix=output_prefix,
             region_name=region_name,
             run_id=run_id,
+            image_digest=image_digest,
+            git_sha=git_sha,
             aws_region=aws_region,
             ymd=ymd,
             mode=mode,

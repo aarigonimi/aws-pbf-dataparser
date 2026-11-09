@@ -5,6 +5,7 @@
 # versioned and encrypted. Do not commit credentials.
 
 terraform {
+  required_version = ">= 1.10.0"
   backend "s3" {
     bucket       = "REPLACE-WITH-TERRAFORM-STATE-BUCKET"
     key          = "osm-pbf-data-lake/terraform.tfstate"

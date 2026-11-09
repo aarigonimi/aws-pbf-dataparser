@@ -49,5 +49,5 @@ USER app
 STOPSIGNAL SIGTERM
 
 # src/main.py installs SIGTERM/SIGINT handlers and exits cleanly so AWS Batch
-# can retry interrupted (for example Spot) jobs.
+# can retry interrupted jobs when Batch reports a retryable host failure.
 ENTRYPOINT ["python", "-m", "src.main"]

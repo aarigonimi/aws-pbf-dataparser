@@ -7,6 +7,7 @@ locals {
   vpc_id = var.vpc_id != "" ? var.vpc_id : data.aws_vpc.default.id
 
   is_fargate         = var.batch_compute_type == "FARGATE"
+  is_ec2             = !local.is_fargate
   default_subnet_ids = length(var.subnet_ids) > 0 ? var.subnet_ids : sort(data.aws_subnets.default.ids)
   fargate_subnet_id  = local.default_subnet_ids[0]
   subnet_ids         = local.is_fargate ? [local.fargate_subnet_id] : local.default_subnet_ids
@@ -20,6 +21,8 @@ locals {
     { name = "OUTPUT_PREFIX", value = var.output_prefix },
     { name = "REGION_NAME", value = var.default_region },
     { name = "RUN_ID", value = "batch-run" },
+    { name = "JOB_IMAGE_DIGEST", value = var.image_digest == "" ? "unset" : var.image_digest },
+    { name = "GIT_SHA", value = var.image_tag },
     { name = "MODE", value = var.mode },
     { name = "OVERWRITE", value = var.overwrite },
     { name = "PARQUET_COMPRESSION", value = var.parquet_compression },
@@ -27,9 +30,11 @@ locals {
     { name = "LOG_LEVEL", value = var.log_level },
   ]
 
+  image_reference = var.image_digest != "" ? "${aws_ecr_repository.batch.repository_url}@${var.image_digest}" : "${aws_ecr_repository.batch.repository_url}:${var.image_tag}"
+
   container_properties = merge(
     {
-      image = "${aws_ecr_repository.batch.repository_url}:${var.image_tag}"
+      image = local.image_reference
       resourceRequirements = [
         { type = "VCPU", value = tostring(var.batch_vcpus) },
         { type = "MEMORY", value = tostring(var.batch_memory_mb) },

@@ -559,15 +559,15 @@ docker buildx build \
   "$PROJECT_ROOT"
 ```
 
-**Use immutable tags.** The Quebec run used `osm-pbf-batch:latest` on a `MUTABLE` repository, because those are the defaults in `infrastructure/variables.tf` and no `terraform.tfvars` overrode them. As a result I cannot prove from the job definition alone which image digest processed Quebec. `infrastructure/terraform.tfvars.example` sets `ecr_image_tag_mutability = "IMMUTABLE"` and an explicit `image_tag`. Copy it and set a commit SHA.
+**Use immutable tags.** The historical Quebec run used `osm-pbf-batch:latest` on a `MUTABLE` repository. The current configuration defaults ECR to `IMMUTABLE`, requires a non-latest `image_tag`, and accepts an optional `image_digest` to pin the job definition to `repository@sha256:...`. The manifest records configured `image_digest` and `git_sha`; without an explicit digest it records `null`, since AWS does not inject the resolved digest into the container.
 
-AWS Batch runs the image as follows. The job definition references `${repository_url}:${image_tag}`. The Fargate agent uses the **execution role** to call `ecr:GetAuthorizationToken` and pull layers, and the container then runs `python -m src.main` with the job definition's environment plus the overrides from `submit-job`. Section 7 shows what happens when that first `GetAuthorizationToken` call cannot leave the VPC.
+AWS Batch runs the image as follows. The job definition references `${repository_url}@${image_digest}` when a digest is set, otherwise `${repository_url}:${image_tag}`. The Fargate agent uses the **execution role** to call `ecr:GetAuthorizationToken` and pull layers, and the container then runs `python -m src.main` with the job definition's environment plus the overrides from `submit-job`. Section 7 shows what happens when that first `GetAuthorizationToken` call cannot leave the VPC.
 
 ---
 
 ## 5. Provisioning AWS with Terraform
 
-All infrastructure lives in `infrastructure/`. It needs Terraform `>= 1.6.0`, the AWS provider `~> 5.0` and the random provider `~> 3.6`:
+All infrastructure lives in `infrastructure/`. It needs Terraform `>= 1.10.0`, the AWS provider `~> 5.0` and the random provider `~> 3.6`:
 
 ```text
 infrastructure/
@@ -754,10 +754,10 @@ resource "aws_batch_compute_environment" "osm_compute" {
     desired_vcpus = local.is_fargate ? null : var.batch_desired_vcpus
 
     subnets            = local.subnet_ids
-    security_group_ids = [aws_security_group.batch.id]
+    security_group_ids = local.is_fargate ? null : [aws_security_group.batch[0].id]
 
     instance_type       = local.is_fargate ? null : var.batch_instance_types
-    instance_role       = local.is_fargate ? null : aws_iam_instance_profile.ecs_instance_profile.arn
+    instance_role       = local.is_fargate ? null : aws_iam_instance_profile.ecs_instance_profile[0].arn
     allocation_strategy = local.is_fargate ? null : (var.batch_use_spot ? "SPOT_CAPACITY_OPTIMIZED" : "BEST_FIT_PROGRESSIVE")
     spot_iam_fleet_role = local.is_fargate ? null : (var.spot_iam_fleet_role_arn != "" ? var.spot_iam_fleet_role_arn : null)
   }
@@ -777,7 +777,7 @@ The container definition is assembled in `locals.tf`. It wires the image tag, bo
 ```hcl
   container_properties = merge(
     {
-      image = "${aws_ecr_repository.batch.repository_url}:${var.image_tag}"
+      image = local.image_reference
       resourceRequirements = [
         { type = "VCPU", value = tostring(var.batch_vcpus) },
         { type = "MEMORY", value = tostring(var.batch_memory_mb) },

@@ -19,10 +19,10 @@ resource "aws_batch_compute_environment" "osm_compute" {
     desired_vcpus = local.is_fargate ? null : var.batch_desired_vcpus
 
     subnets            = local.subnet_ids
-    security_group_ids = [aws_security_group.batch.id]
+    security_group_ids = local.is_fargate ? null : [aws_security_group.batch[0].id]
 
     instance_type       = local.is_fargate ? null : var.batch_instance_types
-    instance_role       = local.is_fargate ? null : aws_iam_instance_profile.ecs_instance_profile.arn
+    instance_role       = local.is_fargate ? null : aws_iam_instance_profile.ecs_instance_profile[0].arn
     allocation_strategy = local.is_fargate ? null : (var.batch_use_spot ? "SPOT_CAPACITY_OPTIMIZED" : "BEST_FIT_PROGRESSIVE")
     spot_iam_fleet_role = local.is_fargate ? null : (var.spot_iam_fleet_role_arn != "" ? var.spot_iam_fleet_role_arn : null)
   }

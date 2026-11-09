@@ -25,3 +25,5 @@ jobs:
         run: terraform init -backend=false -input=false
       - name: Validate configuration
         run: terraform validate
+      - name: Validate EC2 configuration
+        run: terraform validate -var='batch_compute_type=EC2' -var='image_tag=ci-validation-sha'

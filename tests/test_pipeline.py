@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -135,6 +136,9 @@ def test_successful_run_publishes_data_and_manifest_last(tmp_path: Path):
     assert result.record_counts == {"nodes": 1, "ways": 1, "relations": 1}
     assert result.total_records == 3
     assert result.manifest_key in fake.objects
+    manifest = json.loads(fake.objects[result.manifest_key])
+    assert manifest["image_digest"] is None
+    assert manifest["git_sha"] is None
     assert result.manifest_key == ("curated/region=monaco/ymd=20261108/_manifest.json")
     assert "curated/region=monaco/ymd=20261108/entity=nodes/part-00000.parquet" in fake.objects
     assert not any(key.startswith("curated/_staging/") for key in fake.objects)
