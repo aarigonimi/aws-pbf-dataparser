@@ -12,10 +12,10 @@ Use this before submitting `aws-builder-center-article.md` to AWS Builder Center
 
 ## Technical accuracy checked for this draft
 
-- [x] Python 3.12 `make check`: Ruff check, formatting, mypy and 51 passing tests.
+- [x] Python 3.12 `make check`: Ruff check, formatting, mypy and 139 passing tests.
 - [x] Python compilation and dependency consistency (`compileall`, `pip check`).
-- [x] Terraform 1.11.4 formatting, backend-disabled init and validation passed; no plan or apply was run.
-- [x] Docker limitation is stated accurately: daemon unavailable, so the current image build and smoke commands were not run.
+- [ ] Terraform format passed locally, but init/validation could not run because the registry is unreachable and cached provider binaries fail to start; CI validates Fargate and EC2 configurations.
+- [ ] Docker limitation is recorded accurately: daemon unavailable, so the current image build and smoke commands were not run.
 - [x] Historical Quebec counts, sizes and durations are marked by source; derived values show their formulas; costs are unavailable.
 - [x] The ECR network diagnosis is described as a timestamp/configuration correlation, not packet-capture proof.
 - [x] The Quebec overlap, retry history, mutable image tag and untested repository changes are disclosed.

@@ -38,3 +38,8 @@ jobs:
         run: mypy src
       - name: Unit tests
         run: python -m pytest
+      - name: Build local Linux image and smoke test
+        if: matrix.python-version == '3.12'
+        run: |
+          docker buildx build --platform linux/amd64 --load --tag osm-pbf-batch:ci .
+          docker run --rm osm-pbf-batch:ci --help
