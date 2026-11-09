@@ -55,6 +55,12 @@ class FakeS3:
         self.upload_events.append((key, Path(local_path).exists()))
         self.objects[key] = Path(local_path).read_bytes()
 
+    def put(self, bucket, key, body, if_none_match=False):
+        if if_none_match and key in self.objects:
+            return False
+        self.objects[key] = body if isinstance(body, bytes) else bytes(body)
+        return True
+
     def copy(self, bucket, source_key, destination_key):
         self.events.append(
             {
@@ -220,7 +226,15 @@ def test_replace_mode_removes_stale_objects(tmp_path: Path):
     stale_delete = next(
         event for event in fake.events if event["action"] == "delete" and stale_key in event["keys"]
     )
-    assert stale_delete["manifest_present"] is True
+    # Stale objects are removed before the new data and manifest are copied,
+    # so readers never observe a manifest that references missing files.
+    assert stale_delete["manifest_present"] is False
+    first_final_copy = next(
+        event
+        for event in fake.events
+        if event["action"] == "copy" and event["key"].startswith(config.curated_prefix)
+    )
+    assert fake.events.index(stale_delete) < fake.events.index(first_final_copy)
 
 
 def test_replace_removes_old_manifest_before_copying_data(tmp_path: Path):
@@ -328,3 +342,118 @@ def test_cancellation_propagates_and_leaves_no_output(tmp_path: Path):
         run_pipeline(config, s3=fake, processor=_processor(cancel=True))
 
     assert not any(key.startswith("curated/") for key in fake.objects)
+
+
+def _lock_key_for(config: JobConfig) -> str:
+    return f"{config.output_prefix}/{config.lock_relative_key}"
+
+
+def test_run_holding_partition_claim_conflicts_instead_of_racing(tmp_path: Path):
+    config = _config(tmp_path)
+    lock_key = _lock_key_for(config)
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes", lock_key: b'{"run_id": "other-run"}'})
+
+    with pytest.raises(OutputConflictError) as raised:
+        run_pipeline(config, s3=fake, processor=_processor())
+
+    assert "Another run is already publishing" in str(raised.value)
+    # The other run's claim must be untouched and no work may be published:
+    # only the raw input and the foreign claim remain.
+    assert fake.objects == {INPUT_KEY: b"pbf-bytes", lock_key: b'{"run_id": "other-run"}'}
+
+
+def test_partition_claim_is_released_after_successful_run(tmp_path: Path):
+    config = _config(tmp_path)
+    lock_key = _lock_key_for(config)
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes"})
+
+    result = run_pipeline(config, s3=fake, processor=_processor())
+
+    assert result.status == "success"
+    assert lock_key not in fake.objects
+
+
+def test_partition_claim_is_released_after_failure(tmp_path: Path):
+    config = _config(tmp_path)
+    lock_key = _lock_key_for(config)
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes"}, copy_fail_key=manifest_key)
+
+    with pytest.raises(RuntimeError):
+        run_pipeline(config, s3=fake, processor=_processor())
+
+    assert lock_key not in fake.objects
+
+
+def test_partition_claim_is_released_after_cancellation(tmp_path: Path):
+    config = _config(tmp_path)
+    lock_key = _lock_key_for(config)
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes"})
+
+    with pytest.raises(JobCancelled):
+        run_pipeline(config, s3=fake, processor=_processor(cancel=True))
+
+    assert lock_key not in fake.objects
+
+
+def _racing_s3(fake: FakeS3, manifest_key: str) -> FakeS3:
+    class RacingFakeS3(FakeS3):
+        def put(self, bucket, key, body, if_none_match=False):
+            acquired = super().put(bucket, key, body, if_none_match)
+            # Simulate another run publishing (and releasing its claim)
+            # between our pre-check and claim acquisition.
+            if acquired and if_none_match:
+                self.objects[manifest_key] = b"{}"
+            return acquired
+
+    return RacingFakeS3(fake.objects)
+
+
+def test_output_appearing_during_claim_acquisition_skips_in_skip_mode(tmp_path: Path):
+    config = _config(tmp_path, OVERWRITE="skip")
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    fake = _racing_s3(FakeS3({INPUT_KEY: b"pbf-bytes"}), manifest_key)
+
+    def should_not_run(*args, **kwargs):
+        raise AssertionError("processor must not run when output appeared during claiming")
+
+    result = run_pipeline(config, s3=fake, processor=should_not_run)
+
+    assert result.skipped is True
+    assert result.status == "skipped"
+
+
+def test_output_appearing_during_claim_acquisition_conflicts_in_error_mode(tmp_path: Path):
+    config = _config(tmp_path)
+    manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
+    fake = _racing_s3(FakeS3({INPUT_KEY: b"pbf-bytes"}), manifest_key)
+
+    with pytest.raises(OutputConflictError):
+        run_pipeline(config, s3=fake, processor=_processor())
+
+    assert fake.objects[manifest_key] == b"{}"
+
+
+def test_replace_mode_takes_over_a_stale_claim(tmp_path: Path):
+    config = _config(tmp_path, OVERWRITE="replace")
+    lock_key = _lock_key_for(config)
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes", lock_key: b'{"run_id": "terminated-run"}'})
+
+    result = run_pipeline(config, s3=fake, processor=_processor())
+
+    assert result.status == "success"
+    assert result.manifest_key in fake.objects
+    # The stale claim is replaced by ours and released when the run finishes.
+    assert lock_key not in fake.objects
+
+
+def test_claim_lock_object_is_not_treated_as_stale_output(tmp_path: Path):
+    config = _config(tmp_path)
+    lock_key = _lock_key_for(config)
+    fake = FakeS3({INPUT_KEY: b"pbf-bytes"})
+
+    run_pipeline(config, s3=fake, processor=_processor())
+
+    # During the run the claim exists under the partition; afterwards it is
+    # removed, so a replace run must never classify its own claim as stale.
+    assert lock_key not in fake.objects

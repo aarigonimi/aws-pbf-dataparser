@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 import tempfile
@@ -84,18 +85,38 @@ def _final_key(config: JobConfig, relative_key: str) -> str:
     return f"{config.output_prefix}/{relative_key.strip('/')}"
 
 
+def _claim_partition(config: JobConfig, s3: Any, lock_key: str, payload: bytes) -> bool:
+    """Atomically claim exclusive publication rights for one partition.
+
+    The claim is an S3 conditional write (``If-None-Match: *``) so exactly one
+    of several concurrently starting jobs can acquire it, even when the jobs
+    run in different queues or were submitted through different tools. In
+    ``OVERWRITE=replace`` mode a leftover claim from a terminated run is
+    removed first because ``replace`` explicitly authorises recovery.
+    """
+
+    if config.overwrite == "replace":
+        s3.delete_keys(config.output_bucket, [lock_key])
+    return s3.put(config.output_bucket, lock_key, payload, if_none_match=True)
+
+
 def _check_existing_outputs(
     config: JobConfig,
     s3: Any,
     manifest_key: str,
+    ignore_keys: frozenset[str] = frozenset(),
 ) -> bool:
-    """Return True when the job should be skipped."""
+    """Return True when the job should be skipped.
+
+    ``ignore_keys`` excludes the caller's own partition claim when the check
+    is re-run after the claim is acquired.
+    """
 
     existing_manifest = s3.exists(config.output_bucket, manifest_key)
     if config.overwrite == "skip":
         if existing_manifest:
             return True
-        stale = s3.list_keys(config.output_bucket, config.curated_prefix + "/")
+        stale = _partition_data_keys(s3, config, ignore_keys)
         if stale:
             raise OutputConflictError(
                 "Found output files without a completion manifest under "
@@ -111,7 +132,7 @@ def _check_existing_outputs(
                 f"Output manifest already exists at s3://{config.output_bucket}/"
                 f"{manifest_key}. Set OVERWRITE=skip or OVERWRITE=replace."
             )
-        existing = s3.list_keys(config.output_bucket, config.curated_prefix + "/")
+        existing = _partition_data_keys(s3, config, ignore_keys)
         if existing:
             raise OutputConflictError(
                 f"Output already exists under s3://{config.output_bucket}/"
@@ -121,13 +142,29 @@ def _check_existing_outputs(
     return False
 
 
+def _partition_data_keys(s3: Any, config: JobConfig, ignore_keys: frozenset[str]) -> list[str]:
+    return [
+        key
+        for key in s3.list_keys(config.output_bucket, config.curated_prefix + "/")
+        if key not in ignore_keys
+    ]
+
+
 def run_pipeline(
     config: JobConfig,
     s3: Any | None = None,
     processor: Processor | None = None,
     cancel_token: CancelToken | None = None,
 ) -> PipelineResult:
-    """Execute one PBF -> Parquet run and publish it to S3."""
+    """Execute one PBF -> Parquet run and publish it to S3.
+
+    Publication is serialised per output partition with a conditional-write
+    claim object, so concurrent runs of the same ``region``/``ymd`` fail fast
+    with an :class:`OutputConflictError` instead of interleaving their
+    copies. The claim is released when the run finishes, and stale objects
+    are removed before new data is published so a failed run never leaves a
+    manifest alongside missing files.
+    """
 
     client = s3 or S3Client(
         region=config.aws_region,
@@ -139,10 +176,12 @@ def run_pipeline(
     token = cancel_token or CancelToken()
 
     manifest_key = _final_key(config, config.manifest_relative_key)
+    lock_key = _final_key(config, config.lock_relative_key)
+    claim_keys = frozenset({lock_key})
     started_at = datetime.now(UTC)
     run_started = time.monotonic()
 
-    if _check_existing_outputs(config, client, manifest_key):
+    if _check_existing_outputs(config, client, manifest_key, ignore_keys=claim_keys):
         logger.info(
             "Skipping run: completed output already exists at s3://%s/%s",
             config.output_bucket,
@@ -173,8 +212,45 @@ def run_pipeline(
     staging_uploaded: list[str] = []
     published_keys: list[str] = []
     sinks: dict[str, ParquetSink] = {}
+    lock_held = False
 
     try:
+        claim_payload = json.dumps(
+            {
+                "run_id": config.run_id,
+                "region": config.region_name,
+                "ymd": config.ymd,
+                "acquired_at": started_at.isoformat(),
+            },
+            sort_keys=True,
+        ).encode("utf-8")
+        if not _claim_partition(config, client, lock_key, claim_payload):
+            raise OutputConflictError(
+                "Another run is already publishing this partition (claim at "
+                f"s3://{config.output_bucket}/{lock_key}). Wait for it to finish, or, "
+                "after confirming no run is active (a previous attempt was terminated "
+                f"before cleanup), recover with: {REPLACE_RECOVERY_COMMAND}"
+            )
+        lock_held = True
+
+        # Re-check under the claim: a run may have published between the
+        # first check and claim acquisition.
+        if _check_existing_outputs(config, client, manifest_key, ignore_keys=claim_keys):
+            logger.info(
+                "Skipping run: completed output appeared at s3://%s/%s while "
+                "acquiring the partition claim.",
+                config.output_bucket,
+                manifest_key,
+            )
+            return PipelineResult(
+                status="skipped",
+                region=config.region_name,
+                ymd=config.ymd,
+                run_id=config.run_id,
+                manifest_key=manifest_key,
+                skipped=True,
+            )
+
         input_bytes = int(client.head(config.raw_bucket, config.raw_partition_key)["bytes"])
         download_started = time.monotonic()
         client.download(config.raw_bucket, config.raw_partition_key, input_path)
@@ -303,7 +379,7 @@ def run_pipeline(
             stale_keys = [
                 key
                 for key in preexisting_final_keys
-                if key not in final_data_keys and key != manifest_key
+                if key not in final_data_keys and key not in {manifest_key, lock_key}
             ]
             if manifest_key in preexisting_final_keys:
                 client.delete_keys(config.output_bucket, [manifest_key])
@@ -312,6 +388,14 @@ def run_pipeline(
                         "Could not remove the previous completion manifest; "
                         "refusing to replace data while it remains visible."
                     )
+
+        # Remove stale objects before publishing new data so a failed
+        # publication never leaves a valid manifest referencing missing
+        # files: a crash at any point leaves the partition without a
+        # manifest, which readers gate on.
+        if stale_keys:
+            client.delete_keys(config.output_bucket, stale_keys)
+            logger.info("Removed %d stale output objects.", len(stale_keys))
 
         try:
             for item in files:
@@ -335,10 +419,6 @@ def run_pipeline(
             rollback_keys = [key for key in published_keys if key not in preexisting_final_keys]
             client.delete_keys(config.output_bucket, rollback_keys)
             raise
-
-        if stale_keys:
-            client.delete_keys(config.output_bucket, stale_keys)
-            logger.info("Removed %d stale output objects.", len(stale_keys))
 
         for item in files:
             Path(item["local_path"]).unlink(missing_ok=True)
@@ -371,5 +451,7 @@ def run_pipeline(
         )
     finally:
         client.delete_keys(config.output_bucket, staging_uploaded)
+        if lock_held:
+            client.delete_keys(config.output_bucket, [lock_key])
         if owns_work_dir:
             shutil.rmtree(work_dir, ignore_errors=True)
