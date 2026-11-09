@@ -64,9 +64,10 @@ See the [architecture description](docs/ARCHITECTURE.md),
 | Amazon Athena | SQL validation with a configured workgroup and optional scan cutoff |
 
 The decisions explain why Batch was selected, how PBF data is represented, and
-what the S3 publication marker guarantees. The projected table is implemented
-but has not been deployed or verified in AWS. No comparative Lambda/ECS cost or
-performance test was performed.
+the limits of the S3 publication marker. Readers must check the marker before
+querying; direct Athena/S3 readers can see partially published output. The
+projected table is implemented but has not been deployed or verified in AWS.
+No comparative Lambda/ECS cost or performance test was performed.
 
 ## Repository layout
 
@@ -153,7 +154,9 @@ The manifest lists counts, source bytes, file keys/sizes, codec, run ID and
 timings. Its `duration_seconds` is recorded before S3 publication completes;
 use the CloudWatch completion log and AWS Batch timestamps for total runtime.
 The manifest path starts with `_`; read it directly from S3 instead of relying
-on Athena to scan it.
+on Athena to scan it. Query a partition only after its final manifest exists.
+The manifest does not block direct Athena queries or S3 listings from seeing
+partial data while final keys are being copied.
 
 `OVERWRITE=error` protects an existing partition; `skip` treats a manifest as
 completion; `replace` republishes and removes stale keys. There is no

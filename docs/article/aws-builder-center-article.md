@@ -101,7 +101,7 @@ Three design rules shape the code:
 
 1. **Stream everything.** Never hold the PBF, or a whole entity type, in memory.
 2. **Make failures classifiable.** Each failure class maps to a process exit code, and AWS Batch retries only the transient ones.
-3. **Publish with a completion marker.** On a first publication using `OVERWRITE=error`, consumers can wait for `_manifest.json` before reading the new partition. S3 has no transaction across these keys; during `OVERWRITE=replace`, the old manifest can remain while data keys are being overwritten, so replacement is not an atomic snapshot swap.
+3. **Publish with a completion marker.** Readers that check for `_manifest.json` before querying can use it to identify a completed partition. The marker does not gate direct S3 listings or Athena queries; they can see copied objects before publication finishes. S3 has no transaction across these keys, and replacement is not an atomic snapshot swap.
 
 ---
 
@@ -1040,11 +1040,12 @@ What was changed and what is still open:
 | --- | --- | --- |
 | Before upload (parse error, timeout) | Nothing in `curated/` | Fix and resubmit |
 | During staging upload | Partial `_staging/run_id=X/`; `finally` deletes it | Lifecycle rule removes anything left after 1 day |
-| During final copy | Copied keys are rolled back by `delete_keys`; staging deleted | Resubmit with `OVERWRITE=error` |
-| After manifest copy | Complete partition | Nothing; the manifest marks completion |
-| SIGKILL anywhere | Possibly staging objects | Lifecycle rule; `OVERWRITE=skip` detects data without a manifest |
+| During final copy | Some data keys may already be visible in S3 and Athena; rollback is best-effort | Do not query; validator fails without the manifest. Inspect objects before recovery |
+| After manifest copy | New manifest is present; data copy phase completed | Compare the manifest with S3/Athena counts |
+| SIGKILL during staging | Possibly staging objects | Lifecycle rule removes abandoned staging keys |
+| SIGKILL during final copy | Partial final data may remain without a manifest and is still directly queryable | Do not query; inspect and recover the partition before retrying |
 
-Rollback deletes are best-effort. `delete_keys` logs a warning instead of raising, so it cannot mask the original error. With `OVERWRITE=replace`, a rollback can delete keys that had *overwritten* previous objects. The pipeline does not restore earlier versions; S3 versioning keeps them for manual recovery.
+Rollback deletes are best-effort. `delete_keys` logs a warning instead of raising, so it cannot mask the original error. The manifest does not prevent direct readers from seeing partial output during publication or after a failed rollback. With `OVERWRITE=replace`, a rollback can delete keys that had *overwritten* previous objects. The pipeline does not restore earlier versions; S3 versioning keeps them for manual recovery.
 
 ### 7.5 Earlier failures worth knowing about
 
@@ -1268,7 +1269,7 @@ For a sense of scale only: an earlier London run in the same account (`london-20
 
 **Idempotency.** The output location depends only on `(output_prefix, region, ymd, entity, file index)`. The output content depends only on the input file and settings. Re-running the same input with `OVERWRITE=replace` therefore produces the same keys. `OVERWRITE=error` turns accidental re-runs into fast failures (exit 4) before any download.
 
-**Partial failures.** Staging plus manifest-last publication with rollback means readers that check for `_manifest.json` never see a partial partition (§7.4). The remaining gaps are documented: concurrent jobs on one partition, and non-atomic `replace`.
+**Partial failures.** Manifest-last publication lets cooperating readers reject a partition until `_manifest.json` exists (§7.4). It does not gate Athena queries or S3 listings; those can expose partial data. The validation script checks for the manifest, but direct clients must apply the same rule. Concurrent jobs and non-atomic `replace` remain separate gaps.
 
 **Lifecycle.** Raw extracts (30 d), staging (1 d), noncurrent curated versions (30 d), Athena results (14 d) and incomplete multipart uploads (7 d) all expire automatically (§5.1). ECR keeps 30 tagged images and expires untagged images after 14 days. CloudWatch Logs retention is 30 days.
 

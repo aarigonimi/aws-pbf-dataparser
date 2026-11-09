@@ -13,6 +13,13 @@ export PARTITION_PREFIX="${OUTPUT_PREFIX}/region=${REGION_NAME}/ymd=${YMD}/"
 
 ## S3 inventory and manifest
 
+Run the validator first. It fails closed if the final manifest is missing; it
+does not make arbitrary Athena queries wait for publication.
+
+```bash
+./scripts/validate_output.sh
+```
+
 List the final objects and count Parquet files (the CLI paginates object
 listing):
 

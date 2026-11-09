@@ -4,13 +4,17 @@
 
 Write Parquet and a manifest below a run-specific staging prefix, copy data
 objects to the final region/date/entity layout, then copy `_manifest.json` last.
-Consumers use the manifest as the successful-run marker.
+Readers that check for the final manifest before querying can use it as a
+successful-run marker. The marker does not gate direct S3 listings or Athena
+queries.
 
 ## Context
 
-S3 does not provide a multi-object transaction. Staging keeps incomplete files
-out of the final partition until publication begins; the manifest identifies
-the intended file inventory and record counts.
+S3 does not provide a multi-object transaction. Staging keeps local and
+intermediate files out of the final partition until publication begins, but
+the first final copy makes objects visible to S3 listing and Athena. The
+manifest identifies the intended file inventory and record counts; readers
+must check for it before querying.
 
 ## Trade-offs
 
