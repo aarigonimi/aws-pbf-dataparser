@@ -73,6 +73,12 @@ resource "aws_batch_job_definition" "osm_job" {
       action           = "RETRY"
     }
 
+    # Authorization failures are deterministic and use AccessDeniedError (5).
+    evaluate_on_exit {
+      on_exit_code = "5"
+      action       = "EXIT"
+    }
+
     # Without a final rule, Batch retries every unmatched failure, including
     # the non-retryable config (2), input (3) and output-conflict (4) exits.
     evaluate_on_exit {

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from botocore.exceptions import ClientError
 
-from src.errors import InputError, TransientError
+from src.errors import AccessDeniedError, InputError, TransientError
 from src.s3_utils import S3Client
 
 
@@ -18,13 +18,23 @@ class FakeBotoClient:
         self.uploaded: list[tuple[str, str]] = []
         self.copied: list[tuple[str, str]] = []
         self.delete_calls: list[list[str]] = []
+        self.head_calls: list[tuple[str, str]] = []
+        self.list_calls: list[tuple[str, str, int]] = []
 
     def head_object(self, Bucket, Key):
+        self.head_calls.append((Bucket, Key))
         if self.error:
             raise self.error
         if Key not in self.objects:
             raise _client_error("NoSuchKey")
         return {"ContentLength": len(self.objects[Key]), "ETag": '"etag"'}
+
+    def list_objects_v2(self, Bucket, Prefix, MaxKeys):
+        self.list_calls.append((Bucket, Prefix, MaxKeys))
+        if self.error:
+            raise self.error
+        keys = [key for key in sorted(self.objects) if key.startswith(Prefix)][:MaxKeys]
+        return {"Contents": [{"Key": key} for key in keys]} if keys else {}
 
     def download_file(self, Bucket, Key, Filename):
         if self.error:
@@ -83,9 +93,30 @@ def test_head_other_error_is_transient():
 
 
 def test_exists_returns_false_for_missing_key():
-    client = S3Client(region="us-east-1", client=FakeBotoClient())
+    fake = FakeBotoClient()
+    fake.objects["missing.pbf.suffix"] = b"not an exact match"
+    client = S3Client(region="us-east-1", client=fake)
 
     assert client.exists("bucket", "missing.pbf") is False
+    assert fake.list_calls == [("bucket", "missing.pbf", 1)]
+    assert fake.head_calls == []
+
+
+def test_head_access_denied_is_non_retryable():
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error("403")))
+
+    with pytest.raises(AccessDeniedError) as raised:
+        client.head("bucket", "key")
+
+    assert raised.value.exit_code == 5
+
+
+@pytest.mark.parametrize("code", ["SlowDown", "500", "503", "InternalError"])
+def test_head_throttling_and_server_errors_are_transient(code: str):
+    client = S3Client(region="us-east-1", client=FakeBotoClient(error=_client_error(code)))
+
+    with pytest.raises(TransientError):
+        client.head("bucket", "key")
 
 
 def test_download_writes_file_and_rejects_empty(tmp_path: Path):

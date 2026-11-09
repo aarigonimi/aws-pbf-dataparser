@@ -152,6 +152,7 @@ The defaults that matter for memory are `MAX_RECORDS_PER_FILE=250000` and `ROW_G
 | `ConfigError` | 2 | Bad or missing environment variable | Exit |
 | `InputError` | 3 | Missing, empty or unparseable PBF | Exit |
 | `OutputConflictError` | 4 | Partition already exists (`OVERWRITE=error`) | Exit |
+| `AccessDeniedError` | 5 | AWS authorization denied | Exit |
 | `TransientError` | 75 | S3/network failure after botocore retries | **Retry** |
 | `JobCancelled` | 75 | SIGTERM/SIGINT received (e.g. Spot reclaim) | **Retry** |
 

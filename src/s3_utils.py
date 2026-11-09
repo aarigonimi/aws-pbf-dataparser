@@ -6,7 +6,7 @@ from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
-from src.errors import InputError, TransientError
+from src.errors import AccessDeniedError, InputError, TransientError
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +63,8 @@ class S3Client:
 
     def exists(self, bucket: str, key: str) -> bool:
         try:
-            self._client.head_object(Bucket=bucket, Key=key)
-            return True
+            response = self._client.list_objects_v2(Bucket=bucket, Prefix=key, MaxKeys=1)
+            return any(item.get("Key") == key for item in response.get("Contents", []))
         except ClientError as exc:
             if _error_code(exc) in _MISSING_CODES:
                 return False
@@ -78,6 +78,10 @@ class S3Client:
         except ClientError as exc:
             if _error_code(exc) in _MISSING_CODES:
                 raise InputError(f"Object s3://{bucket}/{key} was not found.") from exc
+            if _error_code(exc) in {"403", "AccessDenied"}:
+                raise AccessDeniedError(
+                    f"Access denied inspecting s3://{bucket}/{key}: {exc}"
+                ) from exc
             raise TransientError(f"Failed to inspect s3://{bucket}/{key}: {exc}") from exc
         return {
             "bytes": int(response.get("ContentLength", 0)),

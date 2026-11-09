@@ -68,6 +68,7 @@ There is no distributed lock. Run one job per `region`/`ymd` partition.
 | Bad env/config | 2 | Fail, no retry |
 | Missing/empty/unparseable input | 3 | Fail, no retry |
 | Output conflict | 4 | Fail, no retry |
+| AWS access denied | 5 | Fail, no retry |
 | S3/network failure | 75 | Retry |
 | SIGTERM/SIGINT cancellation | 75 | Retry |
 | Unexpected exception | 1 | Fail, no retry |

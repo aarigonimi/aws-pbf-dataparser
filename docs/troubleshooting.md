@@ -42,6 +42,12 @@ curated objects. The execution role retrieves the image and writes container
 logs. Check bucket name, region, object key, IAM policy and any organization
 SCP or permission boundary.
 
+`head_object` access denials now map to exit code 5 (`AccessDeniedError`) and
+are not retried. The missing-object `exists()` check uses prefix-conditioned
+`ListObjectsV2` and compares the returned key exactly. Verify this behavior in
+a real small AWS smoke run under the deployed job role before relying on it;
+it has not been verified against the live IAM policy.
+
 ## Output conflict
 
 `OVERWRITE=error` returns exit code 4 when a manifest or stray output exists.

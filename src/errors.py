@@ -29,6 +29,12 @@ class OutputConflictError(OsmPipelineError):
     exit_code = 4
 
 
+class AccessDeniedError(OsmPipelineError):
+    """An AWS authorization failure that should not be retried."""
+
+    exit_code = 5
+
+
 class TransientError(OsmPipelineError):
     """A failure that is likely to succeed on retry (S3/network)."""
 
