@@ -28,8 +28,8 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 
 - **Evidence:** Section 3.8 gives the local quality gate; sections 4–6 cover Docker/ECR, Terraform deployment, input upload, Batch submission and status; sections 8–9 cover Glue and Athena validation; section 12 explains cleanup.
 - **Repository files:** `docs/deployment.md`, `docs/execution.md`, `docs/validation.md`, `docs/cleanup.md`, `scripts/`.
-- **Gap:** The GitHub clone URL is still a placeholder, which is tracked as a separate publication blocker.
-- **Required improvement:** Replace all three URL placeholders after creating the public repository.
+- **Gap:** None for the instructions; the published clone URL is `https://github.com/aarigonimi/aws-pbf-dataparser`.
+- **Required improvement:** None.
 
 ### Real engineering experience — PASS
 
@@ -46,9 +46,9 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 
 ### Public repository — PASS
 
-- **Evidence:** This folder is the root of its own Git repository, with `origin` set to `https://github.com/aarigonimi/aws-pbf-dataparser`; the article links to that repository and uses `aws-pbf-dataparse` as its checkout directory.
-- **Gap:** The first commit and push are still pending, so public availability has not yet been confirmed.
-- **Required improvement:** Push the reviewed initial commit and confirm the repository contents online. Keep Terraform state, backups, plans and local variables excluded.
+- **Evidence:** The standalone repository is publicly available at `https://github.com/aarigonimi/aws-pbf-dataparser`. The article links to it and uses `aws-pbf-dataparse` as its checkout directory. The published initial revision is `5d812e6`.
+- **Gap:** None for repository publication.
+- **Required improvement:** None.
 
 ### Production thinking — PASS
 
@@ -72,8 +72,8 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 ### Reader outcome — PARTIAL
 
 - **Evidence:** The article gives the implementation sequence from environment setup through Athena counts and cleanup, with executable commands and configuration examples.
-- **Gap:** The public clone URL is missing, and the current Docker image build is unverified. The article cannot yet promise a reader a fully reproduced result from the current repository revision.
-- **Required improvement:** Publish the repository and validate a build. A future authorized AWS smoke run would close the remaining live-verification gap for the current changes.
+- **Gap:** The current Docker image build is unverified. The article cannot yet promise a reader a fully reproduced result from the current repository revision.
+- **Required improvement:** Validate the current Docker build. A future authorized AWS smoke run would close the remaining live-verification gap for the current changes.
 
 ## Verdict
 

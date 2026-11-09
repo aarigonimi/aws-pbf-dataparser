@@ -1,5 +1,12 @@
 # aws-pbf-dataparse: OpenStreetMap PBF to Parquet on AWS
 
+Repository: <https://github.com/aarigonimi/aws-pbf-dataparser>
+
+```bash
+git clone https://github.com/aarigonimi/aws-pbf-dataparser.git
+cd aws-pbf-dataparse
+```
+
 This project turns a regional OpenStreetMap `.osm.pbf` snapshot into typed,
 compressed Parquet datasets in Amazon S3. AWS Batch runs a containerized
 PyOsmium/PyArrow processor; AWS Glue catalogs the output and Amazon Athena
