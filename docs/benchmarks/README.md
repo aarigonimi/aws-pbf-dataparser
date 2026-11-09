@@ -19,6 +19,9 @@ Derived parse rates: Quebec **26,885.6 entities/s**
 (`13,346,901 / 549.270`). These are two different extracts and are not a
 scaling study.
 
+Both historical runs used the older writer, which rotated at 300,000 rows.
+Current code rotates at 250,000 rows and has not been run in AWS.
+
 The London run was already complete when this audit began. No London job was
 submitted by this audit. See [Quebec](quebec-20261108.json) and
 [London](london-20261108.json) for details and provenance.

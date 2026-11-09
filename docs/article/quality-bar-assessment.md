@@ -46,7 +46,7 @@ Assessment target: [the article](aws-builder-center-article.md). This review che
 
 ### Public repository — PASS
 
-- **Evidence:** The standalone repository is publicly available at `https://github.com/aarigonimi/aws-pbf-dataparser`. The article links to it and uses `aws-pbf-dataparse` as its checkout directory. The published initial revision is `5d812e6`; later commits remain local.
+- **Evidence:** The standalone repository is publicly available at `https://github.com/aarigonimi/aws-pbf-dataparser`. The article links to it and uses `aws-pbf-dataparser` as its checkout directory. The published initial revision is `5d812e6`; current local HEAD is newer and has not been pushed.
 - **Gap:** None for repository publication.
 - **Required improvement:** None.
 

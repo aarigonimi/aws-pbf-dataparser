@@ -841,7 +841,7 @@ The last two rules came out of this audit. The deployed revision (`osm-pbf-data-
 
 ```bash
 git clone https://github.com/aarigonimi/aws-pbf-dataparser.git
-cd aws-pbf-dataparse
+cd aws-pbf-dataparser
 
 aws sts get-caller-identity                     # confirm the account and identity first
 
@@ -1252,7 +1252,10 @@ These are calculated from the numbers above, not measured directly:
 | Output / input size | ≈ 5.5× | 6,454,025,948 / 1,166,570,375 |
 | Average Parquet file | ≈ 13.0 MB | 6,454,025,948 / 497 |
 
-For a sense of scale only: an earlier London run in the same account (`london-20261109142209`, also verified from its manifest) processed 13,346,901 entities in 549.270 parse seconds, about 24,299.3 entities/s (`13,346,901 / 549.270`). It produced 46 files totaling 588,845,591 bytes. Two runs of different sizes landing within roughly 10 % of each other suggests per-entity work dominates. It is not a scaling study.
+For a sense of scale only: a later London run in the same account (`london-20261109142209`, also verified from its manifest) processed 13,346,901 entities in 549.270 parse seconds, about 24,299.3 entities/s (`13,346,901 / 549.270`). It produced 46 files totaling 588,845,591 bytes. Two runs of different sizes landing within roughly 10 % of each other suggests per-entity work dominates. It is not a scaling study.
+
+Both historical runs used the older writer, which rotated at 300,000 rows.
+The current code rotates at 250,000 rows and has not been run in AWS.
 
 ### 10.3 Interpreting the numbers
 

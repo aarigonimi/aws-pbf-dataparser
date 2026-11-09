@@ -4,7 +4,7 @@ Repository: <https://github.com/aarigonimi/aws-pbf-dataparser>
 
 ```bash
 git clone https://github.com/aarigonimi/aws-pbf-dataparser.git
-cd aws-pbf-dataparse
+cd aws-pbf-dataparser
 ```
 
 The article is published as a GitHub Pages site at
@@ -179,6 +179,9 @@ Derived parse throughput is 26,885.6 entities/s for Quebec
 (`148,698,370 / 5,530.778`) and 24,299.3 for London
 (`13,346,901 / 549.270`). Both rates use manifest parse seconds and exclude
 download and publication; two runs are not a scaling study.
+
+Both historical runs used the older writer, which rotated at 300,000 rows.
+The current code rotates at 250,000 rows and has not been run in AWS.
 
 Quebec Athena entity counts matched the S3 manifest. Two Quebec jobs overlapped
 on that partition, so these figures are not a single-job cost baseline. London

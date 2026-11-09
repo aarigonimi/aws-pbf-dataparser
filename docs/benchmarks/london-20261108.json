@@ -3,6 +3,7 @@
   "region": "london",
   "extract_date": "2026-11-08",
   "status": "success",
+  "writer_note": "This historical run used the older writer, which rotated at 300000 rows. Current repository code rotates at 250000 rows and has not been run in AWS.",
   "discovery_note": "This benchmark was already present in AWS during the audit. No London job was submitted by this audit.",
   "provenance": {
     "manifest": "s3://<curated-bucket>/curated/region=london/ymd=20261108/_manifest.json",
