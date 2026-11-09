@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pyarrow.parquet as pq
+import pytest
 
 from src.parquet_writer import (
     ParquetSink,
@@ -89,6 +90,44 @@ def test_parquet_sink_honors_file_limit_between_row_group_boundaries(tmp_path: P
     sink.close()
 
     assert [artifact.records for artifact in sink.artifacts()] == [5, 1]
+
+
+def test_parquet_sink_never_exceeds_max_records_per_file(tmp_path: Path):
+    # The row-group boundary (6) falls past the file cap (10): the old
+    # implementation flushed the whole 11-row buffer into one file with
+    # 11 records. The cap must hold exactly.
+    sink = ParquetSink(
+        tmp_path / "entity=ways",
+        max_records_per_file=10,
+        row_group_size=6,
+    )
+    for osm_id in range(11):
+        sink.add(_row(osm_id, "way"))
+    sink.close()
+
+    assert [artifact.records for artifact in sink.artifacts()] == [10, 1]
+
+
+@pytest.mark.parametrize(
+    "max_records,row_group,total",
+    [(1, 1, 5), (3, 7, 11), (7, 3, 20), (250, 100, 1001)],
+)
+def test_parquet_sink_rotation_respects_cap_for_all_boundaries(
+    tmp_path: Path, max_records: int, row_group: int, total: int
+):
+    sink = ParquetSink(
+        tmp_path / "entity=nodes",
+        max_records_per_file=max_records,
+        row_group_size=row_group,
+    )
+    for osm_id in range(total):
+        sink.add(_row(osm_id))
+    sink.close()
+
+    artifacts = sink.artifacts()
+    assert sum(artifact.records for artifact in artifacts) == total
+    assert all(artifact.records <= max_records for artifact in artifacts)
+    assert artifacts[-1].records > 0
 
 
 def test_write_dataset_with_no_records_creates_no_files(tmp_path: Path):

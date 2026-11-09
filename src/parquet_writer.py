@@ -102,25 +102,49 @@ class ParquetSink:
             compression=self._arrow_compression,
         )
 
-    def _flush_buffer(self) -> None:
-        if not self._buffer:
+    def _write_rows(self, count: int) -> None:
+        if count <= 0 or not self._buffer:
             return
         if self._writer is None:
             self._open_writer()
         table = pa.Table.from_pylist(
             [
                 {key: _normalize_for_arrow(value) for key, value in row.items()}
-                for row in self._buffer
+                for row in self._buffer[:count]
             ],
             schema=self.schema,
         )
-        self._current_file_records += len(self._buffer)
+        self._current_file_records += count
         assert self._writer is not None
-        self._writer.write_table(table, row_group_size=self.row_group_size)
-        self._buffer.clear()
+        self._writer.write_table(table, row_group_size=min(count, self.row_group_size))
+        del self._buffer[:count]
+
+    def _drain(self, force: bool) -> None:
+        """Write buffered rows, never exceeding the per-file record cap.
+
+        Rows are written in chunks bounded by the row-group size and the
+        remaining capacity of the current part file, so a part file can hold
+        at most ``max_records_per_file`` records even when the row-group
+        boundary falls past the cap.
+        """
+
+        while self._buffer:
+            remaining_capacity = self.max_records_per_file - self._current_file_records
+            if remaining_capacity <= 0:
+                self._close_current_file()
+                continue
+            row_group_boundary = len(self._buffer) >= self.row_group_size
+            file_boundary = (
+                self._current_file_records + len(self._buffer) >= self.max_records_per_file
+            )
+            if not row_group_boundary and not file_boundary and not force:
+                return
+            count = min(len(self._buffer), self.row_group_size, remaining_capacity)
+            self._write_rows(count)
+            if self._current_file_records >= self.max_records_per_file:
+                self._close_current_file()
 
     def _close_current_file(self) -> None:
-        self._flush_buffer()
         if self._writer is None:
             return
         path = self.output_dir / f"{self.file_prefix}-{self._file_index:05d}.parquet"
@@ -138,16 +162,10 @@ class ParquetSink:
     def add(self, record: dict[str, Any]) -> None:
         self._buffer.append(record)
         self.total_records += 1
-        reached_row_group = len(self._buffer) >= self.row_group_size
-        reached_file_limit = (
-            self._current_file_records + len(self._buffer) >= self.max_records_per_file
-        )
-        if reached_row_group or reached_file_limit:
-            self._flush_buffer()
-        if self._current_file_records >= self.max_records_per_file:
-            self._close_current_file()
+        self._drain(force=False)
 
     def close(self) -> None:
+        self._drain(force=True)
         self._close_current_file()
 
     def artifacts(self) -> list[Artifact]:
