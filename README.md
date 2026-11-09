@@ -7,6 +7,19 @@ git clone https://github.com/aarigonimi/aws-pbf-dataparser.git
 cd aws-pbf-dataparse
 ```
 
+The article is published as a GitHub Pages site at
+<https://aarigonimi.github.io/aws-pbf-dataparser/>. The site renders the
+Builder Center article with a custom editorial layout and an animated PBF
+route illustration. Updates to `main` build and deploy through
+`.github/workflows/pages.yml`.
+
+To preview it locally, use Ruby and Bundler, then run:
+
+```bash
+bundle install
+bundle exec jekyll serve --baseurl ""
+```
+
 This project turns a regional OpenStreetMap `.osm.pbf` snapshot into typed,
 compressed Parquet datasets in Amazon S3. AWS Batch runs a containerized
 PyOsmium/PyArrow processor; AWS Glue catalogs the output and Amazon Athena
@@ -64,6 +77,7 @@ scripts/                      Image push, Batch submit, output validation, clean
 sql/athena/                   Example entity count validation
 docs/                         Architecture, schema, deployment, operations and benchmarks
 .github/workflows/            Credential-free Python and Terraform checks
+_layouts/ and assets/         Jekyll article layout, styles and motion
 ```
 
 The existing names are retained; the directory is intentionally small rather

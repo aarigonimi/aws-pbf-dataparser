@@ -1,0 +1,30 @@
+title: aws-pbf-dataparse
+description: A field guide to streaming OpenStreetMap PBF data into queryable Parquet on AWS.
+url: https://aarigonimi.github.io
+baseurl: /aws-pbf-dataparser
+markdown: kramdown
+permalink: pretty
+plugins:
+  - jekyll-relative-links
+relative_links:
+  enabled: true
+  collections: false
+exclude:
+  - .github
+  - .gitignore
+  - .dockerignore
+  - .env.example
+  - CHANGELOG.md
+  - CONTRIBUTING.md
+  - Dockerfile
+  - LICENSE
+  - Makefile
+  - README.md
+  - SECURITY.md
+  - infrastructure
+  - requirements-dev.txt
+  - requirements.txt
+  - scripts
+  - src
+  - sql
+  - tests

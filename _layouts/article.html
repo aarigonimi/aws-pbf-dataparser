@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="{{ page.description | escape }}">
+    <meta name="author" content="Aboubacar Ari Gonimi">
+    <meta name="theme-color" content="#0b0e11">
+    <meta property="og:type" content="article">
+    <meta property="og:title" content="{{ page.title | escape }}">
+    <meta property="og:description" content="{{ page.description | escape }}">
+    <meta property="og:url" content="{{ page.url | absolute_url }}">
+    <title>{{ page.title | escape }} · aws-pbf-dataparse</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" defer></script>
+    <script src="{{ '/assets/js/site.js' | relative_url }}" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#article">Skip to article</a>
+    <div class="reading-progress" aria-hidden="true"><span id="reading-progress-bar"></span></div>
+
+    <header class="site-header">
+      <nav class="top-nav" aria-label="Main navigation">
+        <a class="brand" href="{{ '/' | relative_url }}" aria-label="aws-pbf-dataparse home">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>aws-pbf<span class="brand-light">-dataparse</span></span>
+        </a>
+        <div class="nav-right">
+          <a href="#article">Article</a>
+          <a href="{{ '/docs/ARCHITECTURE/' | relative_url }}">Architecture</a>
+          <a class="nav-github" href="https://github.com/aarigonimi/aws-pbf-dataparser" target="_blank" rel="noreferrer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .9a11.1 11.1 0 0 0-3.5 21.6c.55.1.75-.24.75-.53v-2.05c-3.06.67-3.71-1.3-3.71-1.3-.5-1.27-1.23-1.6-1.23-1.6-1-.69.08-.68.08-.68 1.11.08 1.69 1.14 1.69 1.14.99 1.68 2.59 1.2 3.22.91.1-.71.39-1.2.7-1.48-2.45-.28-5.02-1.23-5.02-5.47 0-1.21.43-2.2 1.14-2.97-.11-.28-.5-1.41.11-2.94 0 0 .93-.3 3.05 1.13a10.6 10.6 0 0 1 5.55 0c2.12-1.43 3.05-1.13 3.05-1.13.61 1.53.22 2.66.11 2.94.71.77 1.14 1.76 1.14 2.97 0 4.25-2.58 5.18-5.04 5.46.4.35.75 1.04.75 2.1v3.04c0 .29.2.64.76.53A11.1 11.1 0 0 0 12 .9Z"/></svg>
+            <span>View repository</span>
+          </a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="story-head" aria-label="Article introduction">
+        <div class="story-eyebrow"><span class="eyebrow-rule"></span> FIELD NOTES <span class="eyebrow-dot">/</span> AWS DATA ENGINEERING</div>
+        <h1 class="story-title">{{ page.title | escape }}</h1>
+        <p class="story-deck">{{ page.description | escape }}</p>
+        <div class="story-meta">
+          <span class="meta-author"><span class="author-avatar">AG</span> Aboubacar Ari Gonimi</span>
+          <span class="meta-separator" aria-hidden="true">·</span>
+          <time datetime="2026-11-09">November 9, 2026</time>
+          <span class="meta-separator" aria-hidden="true">·</span>
+          <span>50 min read</span>
+        </div>
+        <figure class="route-scene" aria-labelledby="scene-caption">
+          <div class="scene-topline">
+            <span class="scene-kicker"><span class="live-dot"></span> A SNAPSHOT IN MOTION</span>
+            <span class="scene-coordinates">45.5019° N &nbsp; 73.5674° W</span>
+          </div>
+          <svg class="route-map" viewBox="0 0 1120 330" role="img" aria-labelledby="route-title route-desc">
+            <title id="route-title">An OSM PBF snapshot traveling along a road into Parquet</title>
+            <desc id="route-desc">A small data truck follows a winding road from a regional OpenStreetMap extract, through AWS Batch, toward queryable Parquet files in S3.</desc>
+            <defs>
+              <linearGradient id="map-glow" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#152a32"/><stop offset="1" stop-color="#101920"/></linearGradient>
+              <linearGradient id="route-glow" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#67d8c1"/><stop offset=".52" stop-color="#63b7e8"/><stop offset="1" stop-color="#f4b568"/></linearGradient>
+              <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse"><path d="M32 0H0V32" fill="none" stroke="#95c3c3" stroke-opacity=".055" stroke-width="1"/></pattern>
+              <filter id="soft-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+            </defs>
+            <rect width="1120" height="330" rx="18" fill="url(#map-glow)"/>
+            <rect width="1120" height="330" rx="18" fill="url(#grid)"/>
+            <g class="contours" fill="none" stroke="#9cc9bd" stroke-opacity=".12" stroke-width="1">
+              <path d="M-40 64C118 24 221 36 309 71s174 39 255 6 173-52 267-19 186 44 334 5"/>
+              <path d="M-46 77C112 37 218 49 304 84s171 39 253 6 172-52 266-20 189 45 341 6"/>
+              <path d="M-32 267c129 17 202-24 276-37 92-16 154 18 252 25 100 7 162-37 245-33s190 42 403 0"/>
+              <path d="M-28 281c131 18 206-23 279-36 91-16 156 17 253 24s161-37 244-33 189 42 403 0"/>
+            </g>
+            <g class="map-blocks" fill="#27414a" stroke="#4e7379" stroke-opacity=".48">
+              <path d="M112 105h42v23h-42zM162 105h24v23h-24zM105 136h30v19h-30zM143 136h43v19h-43z"/>
+              <path d="M356 93h33v17h-33zM395 93h25v17h-25zM348 117h26v18h-26zM381 117h39v18h-39z"/>
+              <path d="M672 223h36v17h-36zM714 223h25v17h-25zM665 247h27v19h-27zM701 247h38v19h-38z"/>
+              <path d="M927 98h32v20h-32zM966 98h29v20h-29zM921 125h26v18h-26zM955 125h40v18h-40z"/>
+            </g>
+            <g class="parks" fill="#1e514e" fill-opacity=".65">
+              <path d="M234 236c17-25 48-32 72-18 16 10 19 29 9 43-15 22-50 23-72 14-18-8-20-24-9-39Z"/>
+              <path d="M823 58c19-18 45-19 62-5 15 13 11 31-3 42-21 16-56 12-70-3-10-11-3-24 11-34Z"/>
+            </g>
+            <path class="road-shadow" d="M-24 204C102 204 92 147 178 147s90-76 185-76 92 75 188 75 105-55 196-55 91 78 174 78 92 54 223 54"/>
+            <path class="road-base" d="M-24 204C102 204 92 147 178 147s90-76 185-76 92 75 188 75 105-55 196-55 91 78 174 78 92 54 223 54"/>
+            <path class="road-center" d="M-24 204C102 204 92 147 178 147s90-76 185-76 92 75 188 75 105-55 196-55 91 78 174 78 92 54 223 54"/>
+            <path id="route-track" class="route-track" d="M-24 204C102 204 92 147 178 147s90-76 185-76 92 75 188 75 105-55 196-55 91 78 174 78 92 54 223 54"/>
+            <g class="route-node node-start"><circle r="8"/><circle class="node-pulse" r="14"/></g>
+            <g class="route-node node-batch"><circle r="7"/><circle class="node-pulse" r="13"/></g>
+            <g class="route-node node-end"><circle r="8"/><circle class="node-pulse" r="14"/></g>
+            <g class="map-label label-source"><rect x="38" y="235" width="137" height="42" rx="7"/><text x="51" y="252" class="label-overline">SOURCE SNAPSHOT</text><text x="51" y="267" class="label-main">OSM .PBF</text></g>
+            <g class="map-label label-batch"><rect x="478" y="27" width="137" height="42" rx="7"/><text x="491" y="44" class="label-overline">PROCESSING</text><text x="491" y="59" class="label-main">AWS Batch</text></g>
+            <g class="map-label label-output"><rect x="945" y="253" width="139" height="42" rx="7"/><text x="958" y="270" class="label-overline">ANALYTICS READY</text><text x="958" y="285" class="label-main">Parquet · S3</text></g>
+            <g class="data-truck" id="data-truck" aria-hidden="true">
+              <ellipse cx="0" cy="21" rx="39" ry="7" fill="#071114" opacity=".55"/>
+              <rect x="-32" y="-15" width="42" height="27" rx="4" fill="#58b9aa"/>
+              <path d="M10-9h14l12 12v9H10z" fill="#f2b568"/>
+              <path d="M17-5h6l7 8H17z" fill="#c9edf0"/>
+              <rect x="-26" y="-10" width="22" height="17" rx="2" fill="#123b3c"/>
+              <path d="M-22-7h13M-22-2h13M-22 3h8" stroke="#8de0cd" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="-20" cy="13" r="6" fill="#15252b"/><circle cx="-20" cy="13" r="2.6" fill="#9aaeb2"/>
+              <circle cx="23" cy="13" r="6" fill="#15252b"/><circle cx="23" cy="13" r="2.6" fill="#9aaeb2"/>
+              <path d="M-32-17h14" stroke="#f2b568" stroke-width="2" stroke-linecap="round"/>
+            </g>
+            <g class="destination" transform="translate(1030 197)">
+              <circle r="23" fill="#12383a" stroke="#67d8c1" stroke-opacity=".56"/>
+              <path d="M-9-7h18v14h-18zM-5-12v5m10-5v5M-5 7v5m10-5v5" fill="none" stroke="#8de0cd" stroke-width="1.7" stroke-linecap="round"/>
+              <path d="M-5-1h10M-5 3h10" stroke="#8de0cd" stroke-width="1.3"/>
+            </g>
+            <text x="45" y="310" class="map-note">1.17 GB INPUT</text>
+            <text x="476" y="310" class="map-note">148.7M ENTITIES</text>
+            <text x="944" y="310" class="map-note">497 PARQUET FILES</text>
+          </svg>
+          <figcaption id="scene-caption">A regional snapshot, one continuous route from compressed extract to analytics.</figcaption>
+        </figure>
+      </section>
+
+      <div class="article-layout" id="article">
+        <article class="article-copy">
+          {{ content }}
+          <footer class="article-end">
+            <span class="end-mark" aria-hidden="true">✳</span>
+            <p>Built from a real workload. Shared so you can build the next one.</p>
+            <a href="https://github.com/aarigonimi/aws-pbf-dataparser" target="_blank" rel="noreferrer">Explore the source <span aria-hidden="true">↗</span></a>
+          </footer>
+        </article>
+        <aside class="article-aside" aria-label="Article navigation">
+          <div class="aside-inner">
+            <p class="aside-title">IN THIS ARTICLE</p>
+            <nav id="article-toc" aria-label="Table of contents"></nav>
+            <a class="aside-repo" href="https://github.com/aarigonimi/aws-pbf-dataparser" target="_blank" rel="noreferrer">
+              <span>Source code</span><span aria-hidden="true">↗</span>
+            </a>
+          </div>
+        </aside>
+      </div>
+    </main>
+
+    <footer class="site-footer">
+      <div class="footer-inner"><a class="footer-brand" href="{{ '/' | relative_url }}">aws-pbf-dataparse</a><span>OpenStreetMap data © OpenStreetMap contributors · ODbL</span><a href="https://aarigonimi.com" target="_blank" rel="noreferrer">About the author ↗</a></div>
+    </footer>
+  </body>
+</html>

@@ -1,6 +1,9 @@
-# Building an OpenStreetMap PBF to Parquet Data Lake on AWS Batch: From Terraform to 148 Million Queryable Entities
-
-*An implementation walkthrough: Python, Docker, AWS Batch on Fargate, Amazon S3, AWS Glue and Amazon Athena, with real numbers from a full Quebec extract and the networking failure we had to fix first.*
+---
+layout: article
+title: "Building an OpenStreetMap PBF to Parquet Data Lake on AWS Batch: From Terraform to 148 Million Queryable Entities"
+description: "An implementation walkthrough: Python, Docker, AWS Batch on Fargate, Amazon S3, AWS Glue and Athena, with real numbers from a full Quebec extract and the networking failure we had to fix first."
+permalink: /
+---
 
 > **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser
 >
