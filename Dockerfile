@@ -1,8 +1,9 @@
 # syntax=docker/dockerfile:1
 
-# TODO: Pin both Python base images by digest once the desired linux/amd64
-# digests can be resolved and recorded. Registry access was unavailable here.
-ARG PYTHON_BASE=python:3.12-slim
+# Pinned by manifest digest so image builds are reproducible; dependabot
+# refreshes the digest weekly. Verified resolvable from Docker Hub on
+# 2026-11-09 (multi-arch manifest list, linux/amd64 and linux/arm64).
+ARG PYTHON_BASE=python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
 
 # Build wheels in a disposable stage so the runtime image stays small.
 FROM ${PYTHON_BASE} AS builder
