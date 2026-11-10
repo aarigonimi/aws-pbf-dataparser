@@ -8,9 +8,9 @@ cd aws-pbf-dataparser
 ```
 
 The article is published as a GitHub Pages site at
-<https://aarigonimi.github.io/aws-pbf-dataparser/>. The site renders the
-Builder Center article with a custom editorial layout and an animated PBF
-route illustration. Updates to `main` build and deploy through
+<https://aarigonimi.github.io/aws-pbf-dataparser/>. The homepage renders the
+short Builder Center field report; the full implementation walkthrough lives
+at `/walkthrough/`. Updates to `main` build and deploy through
 `.github/workflows/pages.yml`.
 
 To preview it locally, use Ruby and Bundler, then run:

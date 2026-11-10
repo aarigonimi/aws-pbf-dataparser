@@ -21,7 +21,9 @@ exclude:
   - Makefile
   - README.md
   - SECURITY.md
+  - Gemfile
   - infrastructure
+  - pyproject.toml
   - requirements-dev.txt
   - requirements.txt
   - scripts
