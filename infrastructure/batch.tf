@@ -9,7 +9,10 @@ resource "aws_batch_compute_environment" "osm_compute" {
   compute_environment_name = "${var.project_name}-compute"
   type                     = "MANAGED"
   state                    = "ENABLED"
-  service_role             = aws_iam_role.batch_service_role.arn
+
+  # AWS guidance: Fargate compute environments must not use a customer
+  # managed service role; EC2 environments use the AWSBatchServiceRole.
+  service_role = local.is_ec2 ? aws_iam_role.batch_service_role.arn : null
 
   compute_resources {
     type = local.compute_resource_type

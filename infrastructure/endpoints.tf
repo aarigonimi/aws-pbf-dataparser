@@ -9,12 +9,14 @@ resource "aws_security_group" "vpc_endpoints" {
   description = "Allow Batch Fargate tasks to reach ECR, CloudWatch Logs and S3"
   vpc_id      = local.vpc_id
 
+  # Fargate tasks run on Batch-managed ENIs that do not carry the EC2
+  # security group, so the endpoints accept HTTPS from the whole VPC CIDR.
   ingress {
-    description     = "HTTPS from Batch tasks"
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.batch[0].id]
+    description = "HTTPS from the VPC (Batch Fargate tasks)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.selected.cidr_block]
   }
 
   egress {

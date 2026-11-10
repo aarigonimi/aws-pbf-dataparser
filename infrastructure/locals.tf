@@ -20,7 +20,8 @@ locals {
     { name = "OUTPUT_BUCKET", value = local.curated_bucket_name },
     { name = "OUTPUT_PREFIX", value = var.output_prefix },
     { name = "REGION_NAME", value = var.default_region },
-    { name = "RUN_ID", value = "batch-run" },
+    # RUN_ID is intentionally not set: the application derives a unique,
+    # per-attempt run id from AWS_BATCH_JOB_ID and AWS_BATCH_JOB_ATTEMPT.
     { name = "JOB_IMAGE_DIGEST", value = var.image_digest == "" ? "unset" : var.image_digest },
     { name = "GIT_SHA", value = var.image_tag },
     { name = "MODE", value = var.mode },

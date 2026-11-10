@@ -234,8 +234,10 @@ variable "output_prefix" {
   default     = "curated"
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$", var.output_prefix))
-    error_message = "output_prefix must be a relative S3 prefix without leading/trailing slashes."
+    condition = can(regex("^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$", var.output_prefix)) && alltrue(
+      [for segment in split("/", var.output_prefix) : segment != "." && segment != ".."]
+    )
+    error_message = "output_prefix must be a relative S3 prefix without leading/trailing slashes, empty, '.' or '..' segments."
   }
 }
 
