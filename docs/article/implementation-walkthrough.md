@@ -1,13 +1,13 @@
 ---
 layout: article
-title: "Building an OpenStreetMap PBF to Parquet Data Lake on AWS Batch: From Terraform to 148 Million Queryable Entities"
-description: "An implementation walkthrough: Python, Docker, AWS Batch on Fargate, Amazon S3, AWS Glue and Athena, with real numbers from a full Quebec extract and the networking failure we had to fix first."
-permalink: /
+title: "The Full Implementation Walkthrough: OpenStreetMap PBF to Parquet on AWS Batch"
+description: "The long-form companion to the field report: every module, Terraform block, command and caveat behind the Quebec pipeline, in build order."
+permalink: /walkthrough/
 ---
 
 > **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser
 
-> **Quick path (about 10 minutes):** For the end-to-end flow, read §§1–2, then jump to §7 for the historical failure and recovery, §10 for measured results, and §13 for lessons and limitations. The complete implementation walkthrough follows for readers who want to build it step by step.
+> **About this page:** This is the complete, step-by-step implementation walkthrough behind the shorter [field report]({{ '/processing-148-million-openstreetmap-entities-aws-batch/' | relative_url }}). Read §§1–2 for the end-to-end flow, then jump to §7 for the historical failure and recovery, §10 for measured results, and §13 for lessons and limitations.
 >
 > All code and configuration below come from that repository. All measurements come from one Quebec run on 2026-11-09. I say where each number came from (the S3 manifest, the AWS Batch API, CloudWatch Logs or Athena query history). No cost figure appears anywhere, because I never collected one.
 
@@ -57,6 +57,7 @@ relations      194,419
 ```
 
 Those three counts match `record_counts` in `_manifest.json` exactly.
+These Quebec counts come from the earlier crawler-created tables; the partition-projected table is described in §§8–9.
 
 ---
 
@@ -294,7 +295,7 @@ Memory implications:
 
 This bounds writer buffers; it does not prove a total peak-memory ceiling. The Quebec run did not record peak RSS, so treat the 8 GiB setting as a measured successful configuration for this extract, not a capacity guarantee for every PBF.
 
-> **A real bug, visible in the production data.** The Quebec manifest lists 462 node files and 32 way files with exactly **300,000** records each, not the configured 250,000. The writer that produced Quebec only checked the file limit *after* flushing whole 100,000-row groups (100k → 200k → 300k). The `reached_file_limit` condition above was added during the repository audit so that the buffer flushes exactly at the limit. The Quebec objects were not rewritten. `tests/test_parquet_writer.py` covers the rotation boundaries.
+> **A real bug, visible in the production data.** The Quebec manifest lists 462 node files and 32 way files with exactly **300,000** records each, not the configured 250,000. The writer that produced Quebec only checked the file limit *after* flushing whole 100,000-row groups (100k → 200k → 300k). The `reached_file_limit` condition above makes the buffer flush exactly at the limit. The Quebec objects were not rewritten. `tests/test_parquet_writer.py` covers the rotation boundaries.
 
 ### 3.6 S3 access with retries and translated errors
 
@@ -532,7 +533,7 @@ docker run --rm osm-pbf-batch:local --help
 docker run --rm osm-pbf-batch:local; echo "exit=$?"   # ConfigError -> exit=2
 ```
 
-The Docker daemon was unavailable during this review, so the image build and the two container smoke commands above were not run. ECR reported the compressed image used for the historical Quebec run as 194,769,184 bytes; that is historical registry evidence, not a measurement of a local rebuild.
+At the time of writing, the Docker daemon was unavailable, so the image build and the two container smoke commands above were not run. ECR reported the compressed image used for the historical Quebec run as 194,769,184 bytes; that is historical registry evidence, not a measurement of a local rebuild.
 
 ### Publish to ECR
 
@@ -583,7 +584,7 @@ infrastructure/
 
 A `random_id` suffix makes the bucket names globally unique (`osm-data-raw-<hex>`, `osm-data-curated-<hex>`). Both buckets get a public access block, versioning, SSE-S3 (`AES256`) and a bucket policy that denies non-TLS access. This is the exact `Statement` from `aws_s3_bucket_policy.curated_tls_only`; the surrounding `policy = jsonencode(...)` wrapper is omitted:
 
-The actual bucket resources set `force_destroy = false`, so Terraform will not silently empty a bucket during cleanup:
+The bucket declarations set `force_destroy = false`:
 
 ```hcl
 resource "aws_s3_bucket" "raw" {
@@ -627,8 +628,6 @@ Each lifecycle rule is tied to a specific failure mode or cost leak:
 | curated | `expire-noncurrent-parquet` | `curated/` | 30 days | Versioning protects `OVERWRITE=replace`, but old versions must not live forever |
 | curated | `expire-athena-results` | `athena-results/` | 14 days | Every Athena query writes a result object |
 
-Both buckets set `force_destroy = false`. Terraform refuses to delete a bucket that still holds data, which matters in §12.
-
 ### 5.2 ECR
 
 ```hcl
@@ -649,7 +648,7 @@ resource "aws_ecr_repository" "batch" {
 
 A lifecycle policy expires untagged images after `ecr_untagged_retention_days` (14) and keeps the last `ecr_max_image_count` (30) tagged images.
 
-### 5.3 IAM: five roles, each with one job
+### 5.3 IAM: four roles, each with one job
 
 | Role | Trusted principal | Permissions |
 | --- | --- | --- |
@@ -835,7 +834,7 @@ The job definition adds the retry strategy and a per-attempt timeout (21,600 s =
   }
 ```
 
-The last two rules came out of this audit. The deployed revision (`osm-pbf-data-lake-job:9`) has only the first two. Under the AWS Batch semantics, a failure that matches *no* `evaluate_on_exit` condition is retried. So the deployed job would have retried a config error (exit 2) three times. It is also why the ECR timeouts in §7 were retried at all. The new rules make both behaviors explicit. They pass `terraform validate`, but no job has run against them yet.
+The last two rules were added after reviewing the code. The deployed revision (`osm-pbf-data-lake-job:9`) has only the first two. Under the AWS Batch semantics, a failure that matches *no* `evaluate_on_exit` condition is retried. So the deployed job would have retried a config error (exit 2) three times. It is also why the ECR timeouts in §7 were retried at all. The new rules make both behaviors explicit. They pass `terraform validate`, but no job has run against them yet.
 
 ### 5.6 The deployment workflow
 
@@ -880,7 +879,7 @@ export OUTPUT_BUCKET="$(terraform -chdir=infrastructure output -raw curated_buck
 export JOB_QUEUE="$(terraform -chdir=infrastructure output -raw batch_job_queue_name)"
 export JOB_DEFINITION="$(terraform -chdir=infrastructure output -raw batch_job_definition_name)"
 
-export REGION_NAME="monaco"           # start small; Quebec took ~1h40 end to end
+export REGION_NAME="monaco"           # start small; Quebec took about 1 h 39 min end to end
 export YMD="20261108"                 # the extract's date, also the output partition
 export RUN_ID="${REGION_NAME}-$(date -u +%Y%m%dT%H%M%SZ)"
 export RAW_KEY="region=${REGION_NAME}/ymd=${YMD}/${REGION_NAME}-${YMD}.osm.pbf"
@@ -1245,7 +1244,7 @@ These are calculated from the numbers above, not measured directly:
 
 | Derived metric | Value | Derivation |
 | --- | ---: | --- |
-| Parse throughput | ≈ 26,885.6 entities/s | 148,698,370 / 5,530.778 |
+| Parse throughput | ≈ 26,886 entities/s | 148,698,370 / 5,530.778 |
 | Parse share of application time | ≈ 93.8 % | 5,530.778 / 5,894.62 |
 | Publication phase (staging upload + copies + cleanup) | ≈ 355 s | Log timestamps 06:10:50.582 → 06:16:45.700 |
 | Container start/stop overhead | ≈ 28 s | 5,922.575 − 5,894.62 |
@@ -1276,7 +1275,7 @@ The current code rotates at 250,000 rows and has not been run in AWS.
 
 ## 11. Reliability, security and cost
 
-**Least privilege.** Five roles, each scoped to one job (§5.3). The application role cannot read Athena results or write outside `curated/`. The execution role can pull only the project repository and write only the project log group. The one wildcard is `ecr:GetAuthorizationToken`, which AWS does not allow to be resource-scoped. Remaining broadness is the AWS managed `AWSGlueServiceRole` and `AWSBatchServiceRole` policies, and open egress on the Batch security group. Tighten egress to the endpoint security group plus the S3 prefix list if your organization requires it.
+**Least privilege.** Four roles, each scoped to one job (§5.3). The application role cannot read Athena results or write outside `curated/`. The execution role can pull only the project repository and write only the project log group. The one wildcard is `ecr:GetAuthorizationToken`, which AWS does not allow to be resource-scoped. Remaining broadness is the AWS managed `AWSBatchServiceRole` policy and open egress on the Batch security group. Tighten egress to the endpoint security group plus the S3 prefix list if your organization requires it.
 
 **Networking.** No public IP on tasks, no NAT gateway, and private endpoints for ECR, Logs and S3. Data never leaves the AWS network path. The trade-off is a single-AZ dependency (§5.4).
 
@@ -1350,9 +1349,9 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 **What the historical Quebec run demonstrated, and what is implemented locally:**
 
 - A streaming PBF → Parquet processor that turned a 1.17 GB Quebec extract into **148,698,370 entities in 497 Parquet files (6.45 GB)** on a single 2-vCPU / 8 GiB Fargate task in about 1 h 39 min of Batch time.
-- Terraform for the full stack: S3, ECR, IAM, Batch, VPC endpoints, CloudWatch, Glue and Athena. Terraform formatting passes locally. Provider initialization and validation could not run in this review because the registry was unavailable and the cached provider binaries would not start; no plan or apply was run.
+- Terraform for the full stack: S3, ECR, IAM, Batch, VPC endpoints, CloudWatch, Glue and Athena. Terraform formatting passes locally. Provider initialization and validation could not run at the time of writing because the registry was unavailable and the cached provider binaries would not start; no plan or apply was run.
 - A publication protocol that stages data before final keys; the manifest provides a completion signal only to readers that check for it. Athena counts in the historical Quebec run matched its manifest row for row.
-- A test suite with 139 passing tests at the end of task 8, including an end-to-end run over a generated PBF. The Dockerfile and build scripts are included, but the image was not built in this review because the Docker daemon was unavailable.
+- A test suite with 139 passing tests at the end of task 8, including an end-to-end run over a generated PBF. The Dockerfile and build scripts are included, but the image had not been built at the time of writing because the Docker daemon was unavailable.
 
 **What the experience taught:**
 
@@ -1366,10 +1365,9 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 **Next improvements**, roughly in order of value:
 
 1. A DynamoDB conditional-write lock per `region#ymd`, taken inside `run_pipeline()`.
-2. Test the revised replacement semantics in AWS and collect the resolved runtime image digest.
-4. A vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract, with Cost Explorer data captured.
-5. Capture image digest, peak CPU/memory, and cost with the next clean run.
-6. GeoParquet output and relation multipolygon assembly.
+2. Test the revised replacement semantics in AWS.
+3. Run a vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract; capture the image digest, peak CPU/memory, and Cost Explorer data with the next clean run.
+4. GeoParquet output and relation multipolygon assembly.
 
 **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser. It contains everything needed to reproduce this walkthrough: `src/`, `tests/`, `Dockerfile`, `infrastructure/`, `scripts/`, `sql/athena/`, and the benchmark records under `docs/benchmarks/`.
 

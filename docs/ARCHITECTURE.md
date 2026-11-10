@@ -1,4 +1,9 @@
-# Architecture
+---
+layout: article
+title: Architecture
+description: How the aws-pbf-dataparser components fit together — compute, storage, catalog and query.
+permalink: /docs/ARCHITECTURE/
+---
 
 ## Components
 

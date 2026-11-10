@@ -10,6 +10,12 @@
     <meta property="og:title" content="{{ page.title | escape }}">
     <meta property="og:description" content="{{ page.description | escape }}">
     <meta property="og:url" content="{{ page.url | absolute_url }}">
+    <meta property="og:site_name" content="aws-pbf-dataparse">
+    <meta property="og:locale" content="en">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ page.title | escape }}">
+    <meta name="twitter:description" content="{{ page.description | escape }}">
+    <link rel="canonical" href="{{ page.url | absolute_url }}">
     <title>{{ page.title | escape }} · aws-pbf-dataparse</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,6 +60,11 @@
           {% assign read_minutes = article_words | plus: 199 | divided_by: 200 %}
           <span>{{ read_minutes }} min read</span>
         </div>
+        {% if page.tags %}
+        <div class="story-tags">
+          {% for tag in page.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+        </div>
+        {% endif %}
         <figure class="route-scene" aria-labelledby="scene-caption">
           <div class="scene-topline">
             <span class="scene-kicker"><span class="live-dot"></span> A SNAPSHOT IN MOTION</span>
