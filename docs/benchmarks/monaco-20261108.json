@@ -8,7 +8,7 @@
     "manifest": "s3://<curated-bucket>/curated/region=monaco/2026/11/08/_manifest.json",
     "aws_batch_values": "read from the live AWS account (describe-jobs, logs tail, athena start-query-execution)",
     "executed_by": "repository tutorial (README steps 5-6) on 2026-11-09 local / 2026-11-10 UTC",
-    "layout_migration": "S3 objects were relocated from region=monaco/ymd=20261108/ to region=monaco/2026/11/08/ on 2026-11-10; the run itself wrote the old layout. The manifest object's embedded output.prefix still records the prefix at run time."
+    "layout_migration": "S3 objects were relocated from region=monaco/ymd=20261108/ to region=monaco/2026/11/08/ on 2026-11-10; the run above wrote the old layout. The partition was then republished in the new layout by the yyyy/mm/dd image (job 883bd608-3e10-4b5e-b531-96bba049373f, run_id monaco-layout-030559, exit 0, one attempt, 30.7 s Batch wall time, 3.45 s parse, image digest sha256:691867c5..., same counts and byte totals, no _staging or _lock objects left behind). The manifest of the original run still records its run-time prefix."
   },
   "input": {
     "s3_uri": "s3://<raw-bucket>/region=monaco/2026/11/08/monaco-20261108.osm.pbf",

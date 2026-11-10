@@ -9,6 +9,9 @@
   partition keys (`region`, `year`, `month`, `day`, `entity`, all injected
   except the entity enum). Existing S3 data was relocated with `aws s3 mv` on
   2026-11-10; historical manifests still record their run-time prefix.
+  Verified in AWS after the move: Athena counts for Quebec, London and Monaco
+  matched the manifests, and Monaco was republished in the new layout by the
+  current image with identical counts.
 - Fix the Fargate Batch compute environment: the Batch API requires
   `securityGroupIds` for FARGATE compute environments, so CE creation failed
   with `ClientException: Security group ids are required`; add a dedicated

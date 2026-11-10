@@ -18,6 +18,15 @@ manifest parse seconds. It excludes input download and final publication.
 The Monaco row is a tutorial-scale validation of the current code, not a
 throughput data point: 0.7 MB input, one file per entity, 2.4 s parse.
 
+All three partitions were relocated from `region=<region>/ymd=<YYYYMMDD>/`
+to `region=<region>/<yyyy>/<mm>/<dd>/` on 2026-11-10, and the Glue table
+projection was updated to match; Athena counts for Quebec, London and Monaco
+were re-verified against the manifests after the move. Monaco was then
+republished in the new layout by the current image (run
+`monaco-layout-030559`, recorded in
+[monaco-20261108.json](monaco-20261108.json)); Quebec and London data was
+moved without modification.
+
 Derived parse rates: Quebec **26,885.6 entities/s**
 (`148,698,370 / 5,530.778`) and London **24,299.3 entities/s**
 (`13,346,901 / 549.270`). These are two different extracts and are not a
