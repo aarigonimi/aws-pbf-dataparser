@@ -57,6 +57,14 @@ schema and partition projection. Its `region` and `ymd` partitions use the
 both. `entity` is projected from `nodes,ways,relations`. The table change is
 implemented in the repository but has **not been deployed or verified in AWS**.
 
+Confirm the table exists and exposes the expected columns and partition keys:
+
+```bash
+aws glue get-table --region "$AWS_REGION" --database-name "$GLUE_DATABASE" \
+  --name osm_curated \
+  --query 'Table.{name:Name,columns:StorageDescriptor.Columns[].Name,partitions:PartitionKeys[].Name}'
+```
+
 In the Athena console, select that workgroup and database, and after confirming
 the S3 manifest exists, run:
 
@@ -77,6 +85,24 @@ SELECT osm_id, name, highway, tags
 FROM osm_curated
 WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'ways'
 LIMIT 10;
+```
+
+The same query from the CLI (the workgroup enforces its own results location,
+encryption and scan cutoff):
+
+```bash
+QUERY_ID="$(aws athena start-query-execution --region "$AWS_REGION" \
+  --query-string "SELECT entity, count(*) AS records FROM osm_curated WHERE region = '${REGION_NAME}' AND ymd = '${YMD}' GROUP BY entity ORDER BY entity" \
+  --query-execution-context "Database=${GLUE_DATABASE}" \
+  --result-configuration "OutputLocation=s3://${OUTPUT_BUCKET}/athena-results/" \
+  --work-group "$ATHENA_WORKGROUP" \
+  --query 'QueryExecutionId' --output text)"
+aws athena get-query-execution --region "$AWS_REGION" \
+  --query-execution-id "$QUERY_ID" \
+  --query 'QueryExecution.{state:Status.State,bytesScanned:Statistics.DataScannedInBytes}'
+aws athena get-query-results --region "$AWS_REGION" \
+  --query-execution-id "$QUERY_ID" \
+  --query 'ResultSet.Rows[].Data[].VarCharValue'
 ```
 
 Compare the three counts with `record_counts` in the S3 manifest. Check Athena

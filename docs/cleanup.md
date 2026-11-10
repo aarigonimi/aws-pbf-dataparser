@@ -23,7 +23,40 @@ For a full data purge, first identify the exact bucket names from Terraform
 outputs and confirm with the data owner. Versioned S3 buckets require explicit
 deletion of object versions and delete markers; `aws s3 rm --recursive` alone
 only creates delete markers. Review the version list and delete only after a
-separate explicit approval. No data-purge script is provided.
+separate explicit approval. No data-purge script is provided; the equivalent
+commands, for a reader who has confirmed the purge, are:
+
+```bash
+for BUCKET in "$RAW_BUCKET" "$OUTPUT_BUCKET"; do
+  aws s3api list-object-versions --bucket "$BUCKET" --output json > "/tmp/${BUCKET}.versions.json"
+  python3 - "$BUCKET" <<'EOF'
+import json, subprocess, sys
+bucket = sys.argv[1]
+doc = json.load(open(f"/tmp/{bucket}.versions.json"))
+objects = [{"Key": v["Key"], "VersionId": v["VersionId"]}
+           for field in ("Versions", "DeleteMarkers") for v in doc.get(field, [])]
+for i in range(0, len(objects), 1000):
+    subprocess.run(["aws", "s3api", "delete-objects", "--bucket", bucket,
+                    "--delete", json.dumps({"Objects": objects[i:i+1000], "Quiet": True})],
+                   check=True)
+print(f"purged {len(objects)} object versions from {bucket}")
+EOF
+done
+```
+
+The ECR repository also refuses deletion while it contains images. Delete the
+tagged images you pushed (the repository name is the last path segment of the
+`ecr_repository_url` output):
+
+```bash
+export ECR_REPOSITORY="${ECR_REPOSITORY_URL##*/}"
+aws ecr list-images --repository-name "$ECR_REPOSITORY" --region "$AWS_REGION"
+aws ecr batch-delete-image --repository-name "$ECR_REPOSITORY" --region "$AWS_REGION" \
+  --image-ids "imageTag=$(git rev-parse HEAD)"
+```
+
+Once the buckets and repository are empty, `terraform destroy` (through
+`./scripts/cleanup.sh`) removes the stack without forcing data loss.
 
 After infrastructure cleanup, review continuing charges and retained data:
 

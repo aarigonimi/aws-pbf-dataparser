@@ -11,7 +11,8 @@
       "parquet_files": 497,
       "parquet_bytes": 6454025948,
       "parse_seconds": 5530.778,
-      "validation": "athena_counts_match_manifest"
+      "validation": "athena_counts_match_manifest",
+      "throughput_entities_per_parse_second_derived": 26885.6
     },
     {
       "region": "london",

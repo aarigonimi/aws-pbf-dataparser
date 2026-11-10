@@ -39,3 +39,7 @@ data/*.osm.pbf
 # Decompiled and generated files are not source
 decompiled/
 src_dec/
+
+# Local editor and agent tooling
+.idea/
+.continue/

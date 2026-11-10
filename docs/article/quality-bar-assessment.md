@@ -1,6 +1,6 @@
 # AWS Builder Center Quality Explainer assessment
 
-Assessment target: [the article](aws-builder-center-article.md). This review checks whether the article teaches a reader to implement the pipeline and reports gaps that still prevent a full PASS.
+Assessment target: [the article](processing-148-million-openstreetmap-entities-aws-batch.md). This review checks whether the article teaches a reader to implement the pipeline and reports gaps that still prevent a full PASS.
 
 | Criterion | Status | Evidence |
 | --- | --- | --- |

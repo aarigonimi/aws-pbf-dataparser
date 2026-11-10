@@ -18,9 +18,11 @@ INCLUDE_WAY_GEOMETRY="${INCLUDE_WAY_GEOMETRY:-false}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 ALLOW_CONCURRENT="${ALLOW_CONCURRENT:-false}"
 
-# The pipeline has no distributed partition lock: two jobs for the same
-# partition both pass the OVERWRITE=error check and both publish. Refuse to
-# submit while another job for this region is still active.
+# Belt and braces on top of the pipeline's partition claim: publication is
+# serialized per region/ymd by an S3 conditional write (_lock.json), and a
+# losing run fails fast with exit 4. This client-side guard additionally
+# avoids queueing a second job for the same region while one is active,
+# which saves the wasted job run entirely.
 if [[ "$ALLOW_CONCURRENT" != "true" ]]; then
   ACTIVE_JOBS="$(aws batch list-jobs \
     --job-queue "$JOB_QUEUE" \

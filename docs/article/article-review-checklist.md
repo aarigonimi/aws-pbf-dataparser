@@ -1,6 +1,6 @@
 # Article review checklist
 
-Use this before submitting `aws-builder-center-article.md` to AWS Builder Center (Community Builder Speed Run 2).
+Use this before submitting [the published article](processing-148-million-openstreetmap-entities-aws-batch.md) to AWS Builder Center (Community Builder Speed Run 2).
 
 ## Publication blockers
 

@@ -28,9 +28,9 @@ batch_retry_attempts       = 3
 # batch_desired_vcpus = 0
 
 # Replace with the full output of `git rev-parse HEAD` before planning.
-image_tag                 = "git-REPLACE_WITH_FULL_COMMIT_SHA"
+image_tag               = "git-REPLACE_WITH_FULL_COMMIT_SHA"
 # Optional: pin a specific image digest after publishing the tag.
-# image_digest              = "sha256-REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS"
+# image_digest = "sha256:REPLACE_WITH_64_LOWERCASE_HEX_CHARACTERS"
 ecr_repository_name        = "osm-pbf-batch"
 ecr_image_tag_mutability   = "IMMUTABLE"
 
