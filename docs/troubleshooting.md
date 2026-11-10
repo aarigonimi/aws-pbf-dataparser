@@ -6,7 +6,7 @@ Check each Batch attempt's `statusReason`. The observed failure in this project
 was an ECR `GetAuthorizationToken` connection timeout before the application
 container started. The Terraform fix provisions ECR API and ECR DKR interface
 endpoints, CloudWatch Logs interface endpoints, an S3 gateway endpoint, endpoint
-security-group ingress on TCP 443 from the Batch security group, and pins
+security-group ingress on TCP 443 from the VPC CIDR, and pins
 Fargate to the subnet hosting the interface endpoints.
 
 Verify endpoint state is `available`, private DNS is enabled for interface
@@ -76,9 +76,50 @@ The Terraform-defined `osm_curated` table uses injected partition projection
 for `region` and `ymd`. Every query must include equality predicates for both,
 for example `WHERE region = 'quebec' AND ymd = '20261108'`. Check the Glue table
 parameters, its S3 location template, and that the query uses the configured
-database. This table change is implemented in the repository but has not been
-deployed or verified in AWS. Query only after the final `_manifest.json`
+database. This table was deployed and its Athena counts matched the manifest
+for both the historical Quebec partition and the 2026-11-10 Monaco tutorial
+run. Query only after the final `_manifest.json`
 exists; Athena does not use the manifest as a gate.
+
+## Batch compute environment fails with "Security group ids are required"
+
+The AWS Batch API requires at least one security group ID for `FARGATE`
+compute environments and Fargate does not support launch templates. Older
+versions of this repository passed no security group for Fargate, which
+fails at CE creation with `ClientException: Security group ids are
+required` even though the plan validates. The configuration now creates
+`<project>-batch-fargate` and attaches it whenever
+`batch_compute_type = "FARGATE"`.
+
+A related API limitation: an in-place CE update cannot *clear* an existing
+`securityGroupIds` list — the API rejects an empty list with "At least one
+compute-resources attribute is required" and silently keeps the old groups,
+producing drift. To remove security groups from an existing CE, replace the
+resource: taint both the queue and the CE
+(`terraform -chdir=infrastructure taint aws_batch_job_queue.osm_queue &&
+terraform -chdir=infrastructure taint aws_batch_compute_environment.osm_compute`)
+so the next apply destroys and recreates them in dependency order. Jobs do not
+run while both are down, so drain the queue first.
+
+## Security group deletion blocked by "dependency" (DependencyViolation)
+
+EC2 refuses to delete a security group that another security group's rules
+reference. During the crawler-to-projected-table migration the endpoint
+security group's ingress referenced the Batch task security group, which
+blocked destroying that task group. The endpoints group now allows HTTPS from
+the VPC CIDR instead, so no SG-to-SG references couple the stacks. If you
+still hit this, apply the referencing group first with
+`terraform apply -target=aws_security_group.<referencing>` to rewrite its
+rules, then destroy the referenced group.
+
+## Terraform apply times out mid-run
+
+Batch compute-environment and job-queue changes take minutes each, and a
+migration touching the CE, queue and Glue resources can exceed a 15-minute
+wrapper timeout. If an apply is killed mid-run the state is partial but
+usable: run `terraform plan` immediately to see what remains, then re-apply.
+Use a timeout of 30 minutes or more for stack migrations, and never resume
+from the checked-in `tfplan` artifact.
 
 ## Terraform reports an existing resource or state drift
 

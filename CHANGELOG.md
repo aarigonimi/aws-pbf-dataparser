@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Fix the Fargate Batch compute environment: the Batch API requires
+  `securityGroupIds` for FARGATE compute environments, so CE creation failed
+  with `ClientException: Security group ids are required`; add a dedicated
+  `<project>-batch-fargate` security group for Fargate mode.
+- Drop the endpoints security group's SG-to-SG ingress reference in favor of
+  VPC-CIDR ingress so security-group deletion is not blocked by
+  `DependencyViolation` during stack changes.
+- Replace the Glue crawler with a partition-projected `osm_curated` table and
+  deploy it: Athena entity counts matched the manifest for both the
+  historical Quebec partition and the Monaco tutorial run.
+- Add a Monaco tutorial-scale benchmark record (full deploy-run-query cycle,
+  digest-pinned image, all three overwrite modes verified in AWS) to
+  `docs/benchmarks/`.
+- Mark `scripts/docker_build_push.sh`, `submit_job.sh` and
+  `generate_sample_pbf.py` executable so the documented `./scripts/...`
+  invocations work from a fresh clone.
+- Rewrite the README as an end-to-end tutorial (prerequisites through
+  cleanup) and align `docs/execution.md`, `docs/validation.md` and
+  `docs/cleanup.md` with it, including CLI-based Glue/Athena verification.
+- Document Batch CE/SG recovery procedures (in-place update cannot clear
+  `securityGroupIds`; taint-and-recreate queue+CE; targeted applies for
+  SG-reference blocks; use long apply timeouts) in `docs/troubleshooting.md`.
 - Serialize publication per region/ymd partition with an S3 conditional-write
   claim (`_lock.json`): concurrent runs fail fast with exit code 4 instead of
   interleaving output; `OVERWRITE=replace` force-removes a stale claim.

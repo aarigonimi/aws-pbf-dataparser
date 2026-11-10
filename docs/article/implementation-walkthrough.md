@@ -693,7 +693,7 @@ The job can write staging and final keys, because both live under `curated/`. It
 
 ### 5.4 Networking: default VPC, one subnet, VPC endpoints, no NAT
 
-`networking.tf` discovers the default VPC and its subnets, unless you set `vpc_id`/`subnet_ids`, and creates a Batch security group with open egress. For Fargate, `locals.tf` deliberately pins tasks to **one** subnet: the first of the sorted subnet IDs. The interface endpoints live in that same subnet:
+`networking.tf` discovers the default VPC and its subnets, unless you set `vpc_id`/`subnet_ids`, and creates the Batch security groups with open egress: one for EC2 workers, and one for Fargate task ENIs because the Batch API requires at least one security group ID for FARGATE compute environments. For Fargate, `locals.tf` deliberately pins tasks to **one** subnet: the first of the sorted subnet IDs. The interface endpoints live in that same subnet:
 
 ```hcl
   is_fargate         = var.batch_compute_type == "FARGATE"
@@ -734,7 +734,7 @@ resource "aws_vpc_endpoint" "s3" {
 }
 ```
 
-The endpoint security group accepts TCP 443 only from the Batch security group.
+The endpoint security group accepts TCP 443 from the VPC CIDR rather than from the task security group: an SG-referencing-SG rule couples the two groups' deletion order, which blocked removing the task group during a later stack migration.
 
 The trade-off is explicit. One subnet means one Availability Zone: lower endpoint cost and simpler routing, but no AZ failover for the job. For a batch job that can simply be retried later, I accepted that. If your subnets use custom route tables, add them to `route_table_ids`. The main route table is only correct for subnets without an explicit association.
 
@@ -755,7 +755,7 @@ resource "aws_batch_compute_environment" "osm_compute" {
     desired_vcpus = local.is_fargate ? null : var.batch_desired_vcpus
 
     subnets            = local.subnet_ids
-    security_group_ids = local.is_fargate ? null : [aws_security_group.batch[0].id]
+    security_group_ids = local.is_fargate ? [aws_security_group.batch_fargate[0].id] : [aws_security_group.batch[0].id]
 
     instance_type       = local.is_fargate ? null : var.batch_instance_types
     instance_role       = local.is_fargate ? null : aws_iam_instance_profile.ecs_instance_profile[0].arn
@@ -767,9 +767,12 @@ resource "aws_batch_compute_environment" "osm_compute" {
     aws_iam_role_policy_attachment.batch_service_policy,
     aws_iam_role_policy_attachment.ecs_instance_policy,
     aws_security_group.batch,
+    aws_security_group.batch_fargate,
   ] # tflint-ignore: terraform_unused_depends_on
 }
 ```
+
+The Batch API requires a non-empty `security_group_ids` list even for Fargate (Fargate does not support launch templates), so Fargate tasks use `batch_fargate` while EC2 instances keep `batch`.
 
 `batch_max_vcpus` defaults to 32. With 2-vCPU jobs, that allows up to 16 regions in parallel. The same resource supports `batch_compute_type = "EC2"` with optional Spot (`SPOT_CAPACITY_OPTIMIZED`), which is why the EC2-only arguments are conditional.
 
@@ -1008,7 +1011,7 @@ failed, Post "https://api.ecr.us-east-1.amazonaws.com/": dial tcp 44.213.79.10:4
 | `com.amazonaws.us-east-1.s3` | Gateway | **ECR image layers are stored in S3**, plus the job's own input/output traffic |
 | `com.amazonaws.us-east-1.logs` | Interface, private DNS | The `awslogs` driver |
 
-Plus an endpoint security group allowing TCP 443 from the Batch security group, and Fargate pinned to the endpoint subnet.
+Plus an endpoint security group allowing TCP 443 from the VPC CIDR, and Fargate pinned to the endpoint subnet.
 
 **Why it works:** with `private_dns_enabled = true`, `api.ecr.us-east-1.amazonaws.com` resolves *inside the VPC* to the endpoint ENI's private IP. Traffic never needs a public IP or an internet gateway. Layer downloads are S3 requests, which the gateway endpoint routes through the route table. Without the S3 gateway endpoint, authentication would succeed and the layer pull would still time out. That is a common second failure. AWS documents the endpoint requirements for ECR pulls in [Amazon ECR interface VPC endpoints](https://docs.aws.amazon.com/AmazonECR/latest/userguide/vpc-endpoints.html); AWS Batch also documents the networking requirement for Fargate compute environments [here](https://docs.aws.amazon.com/batch/latest/userguide/create-compute-environment-fargate.html).
 
@@ -1086,7 +1089,7 @@ The table uses Parquet input/output formats and the `ParquetHiveSerDe`. Its proj
 
 `storage.location.template` points to `s3://<curated>/<output_prefix>/region=$${region}/ymd=$${ymd}/entity=$${entity}/`. Injected values avoid maintaining a region or date catalog list; the enum bounds the entity partition to the three directories the writer creates. Since region and date are injected, queries must provide equality filters for both.
 
-The table is declared by `infrastructure/glue.tf`; there is no crawler to run. **This replacement is implemented in the repository but has not been deployed or verified in AWS.** The existing historical Glue crawler observations below describe the previous setup, not the new table. The manifest is not a catalog gate: query only after `_manifest.json` exists, and compare Athena results with it.
+The table is declared by `infrastructure/glue.tf`; there is no crawler to run. **This replacement was deployed on 2026-11-10, replacing the retired crawler stack, and was queried via Athena in the Monaco tutorial validation; the historical Quebec query also returned manifest-matching counts through the projected table.** The existing historical Glue crawler observations below describe the previous setup, not the new table. The manifest is not a catalog gate: query only after `_manifest.json` exists, and compare Athena results with it.
 
 Use the Terraform database/table outputs and the SQL in `sql/athena/validate_entity_counts.sql`. The multi-region validation query is shown in §9. The explicit schema lets one query cover all three entity directories.
 
@@ -1158,7 +1161,7 @@ aws athena get-query-execution --query-execution-id "$QID" \
 aws athena get-query-results --query-execution-id "$QID" --query 'ResultSet.Rows[].Data[].VarCharValue'
 ```
 
-The current repository query in `sql/athena/validate_entity_counts.sql` uses `osm_catalog.osm_curated` and filters on both injected partitions. That query has not been run in AWS.
+The current repository query in `sql/athena/validate_entity_counts.sql` uses `osm_catalog.osm_curated` and filters on both injected partitions. It was run in AWS on 2026-11-10 via the Athena CLI: the Quebec filters returned the historical manifest counts (138,606,771 nodes / 9,897,180 ways / 194,419 relations), and the same query shape with Monaco filters matched the Monaco manifest.
 
 ### 9.2 File inventory consistency
 
@@ -1254,7 +1257,9 @@ These are calculated from the numbers above, not measured directly:
 For a sense of scale only: a later London run in the same account (`london-20261109142209`, also verified from its manifest) processed 13,346,901 entities in 549.270 parse seconds, about 24,299.3 entities/s (`13,346,901 / 549.270`). It produced 46 files totaling 588,845,591 bytes. Two runs of different sizes landing within roughly 10 % of each other suggests per-entity work dominates. It is not a scaling study.
 
 Both historical runs used the older writer, which rotated at 300,000 rows.
-The current code rotates at 250,000 rows and has not been run in AWS.
+The current code rotates at 250,000 rows and was run in AWS for the Monaco
+tutorial validation on 2026-11-10; each Monaco entity fit in a single file, so
+the rotation threshold itself remains unexercised in AWS.
 
 ### 10.3 Interpreting the numbers
 
@@ -1283,7 +1288,7 @@ The current code rotates at 250,000 rows and has not been run in AWS.
 
 **Idempotency.** The output location depends only on `(output_prefix, region, ymd, entity, file index)`. The output content depends only on the input file and settings. Re-running the same input with `OVERWRITE=replace` therefore produces the same keys. `OVERWRITE=error` turns accidental re-runs into fast failures (exit 4) before any download.
 
-**Partial failures.** Manifest-last publication lets cooperating readers reject a partition until `_manifest.json` exists (§7.4). It does not gate Athena queries or S3 listings; those can expose partial data. The validation script checks for the manifest, but direct clients must apply the same rule. Replace now removes the old marker before copying and preserves pre-existing keys during rollback, but it is still not an atomic transaction; these changes are implemented in the repository and have not been verified in AWS.
+**Partial failures.** Manifest-last publication lets cooperating readers reject a partition until `_manifest.json` exists (§7.4). It does not gate Athena queries or S3 listings; those can expose partial data. The validation script checks for the manifest, but direct clients must apply the same rule. Replace now removes the old marker before copying and preserves pre-existing keys during rollback, but it is still not an atomic transaction; all three overwrite modes (`error` exit 4, `skip`, and `replace` with staging cleanup and no leftover objects) were verified in AWS on the small Monaco partition on 2026-11-10, but the rollback-after-mid-run-failure path was not.
 
 **Lifecycle.** Raw extracts (30 d), staging (1 d), noncurrent curated versions (30 d), Athena results (14 d) and incomplete multipart uploads (7 d) all expire automatically (§5.1). ECR keeps 30 tagged images and expires untagged images after 14 days. CloudWatch Logs retention is 30 days.
 
@@ -1360,20 +1365,19 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 3. A pre-flight "does the output exist?" check is not a lock. Two jobs will happily both pass it.
 4. Record the image digest and the exact writer settings with every benchmark. Otherwise a later code fix (the 300,000-row historical rotation) silently invalidates comparisons.
 
-**Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, no relation geometry, WKT instead of native geometry, small output files, and no cost data. The partition-projected Glue table, S3 error classification, safer replace behavior, and early staging uploads are implemented in the repository but have not been verified in AWS.
+**Known limitations:** single-AZ execution, no distributed partition lock, non-atomic `OVERWRITE=replace`, no relation geometry, WKT instead of native geometry, small output files, and no cost data. As of 2026-11-10 the partition-projected Glue table, the three overwrite modes, early staging uploads (exercised by the replace run) and the current image have been verified in AWS at tutorial scale on Monaco; S3 error classification and retry paths were not exercised (no S3 errors occurred), and the 250,000-row rotation threshold was not reached.
 
 **Next improvements**, roughly in order of value:
 
 1. A DynamoDB conditional-write lock per `region#ymd`, taken inside `run_pipeline()`.
-2. Test the revised replacement semantics in AWS.
-3. Run a vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract; capture the image digest, peak CPU/memory, and Cost Explorer data with the next clean run.
-4. GeoParquet output and relation multipolygon assembly.
+2. Run a vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract; capture peak CPU/memory and Cost Explorer data with the next clean run.
+3. GeoParquet output and relation multipolygon assembly.
 
 **Repository:** https://github.com/aarigonimi/aws-pbf-dataparser. It contains everything needed to reproduce this walkthrough: `src/`, `tests/`, `Dockerfile`, `infrastructure/`, `scripts/`, `sql/athena/`, and the benchmark records under `docs/benchmarks/`.
 
 *OpenStreetMap data © OpenStreetMap contributors, available under the Open Database License (ODbL).*
 
-Changes described in this article are implemented in the repository. Changes after the historical Quebec run have not been verified in AWS.
+Changes described in this article are implemented in the repository. Changes after the historical Quebec run were verified in AWS on 2026-11-10 at tutorial scale (Monaco: full deploy-run-query cycle, projected table, digest-pinned image, all overwrite modes); scale-dependent behavior (250,000-row rotation, S3 error classification, multi-hour runs) was not exercised.
 
 ### References
 

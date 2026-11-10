@@ -54,8 +54,9 @@ GLUE_DATABASE="$(terraform -chdir=infrastructure output -raw glue_database_name)
 The `osm_curated` table is declared in Terraform with the explicit Parquet
 schema and partition projection. Its `region` and `ymd` partitions use the
 `injected` projection type, so every query must supply equality filters for
-both. `entity` is projected from `nodes,ways,relations`. The table change is
-implemented in the repository but has **not been deployed or verified in AWS**.
+both. `entity` is projected from `nodes,ways,relations`. The table was deployed
+on 2026-11-10 and its Athena entity counts matched the manifest in the Monaco
+tutorial run ([benchmarks](benchmarks/README.md)).
 
 Confirm the table exists and exposes the expected columns and partition keys:
 

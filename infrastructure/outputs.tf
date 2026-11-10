@@ -60,5 +60,5 @@ output "raw_bucket_name" {
 
 output "security_group_id" {
   description = "Security group attached to Batch workers."
-  value       = local.is_ec2 ? aws_security_group.batch[0].id : null
+  value       = local.is_fargate ? aws_security_group.batch_fargate[0].id : aws_security_group.batch[0].id
 }

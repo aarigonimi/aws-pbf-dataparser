@@ -26,6 +26,20 @@
       "parse_seconds": 549.27,
       "validation": "athena_not_queried",
       "throughput_entities_per_parse_second_derived": 24299.3
+    },
+    {
+      "region": "monaco",
+      "run_id": "monaco-20261110T023307Z",
+      "extract_date": "2026-11-08",
+      "status": "success",
+      "record": "monaco-20261108.json",
+      "entities": 48469,
+      "parquet_files": 3,
+      "parquet_bytes": 2562897,
+      "parse_seconds": 2.369,
+      "validation": "athena_counts_match_manifest",
+      "throughput_entities_per_parse_second_derived": 20459.7,
+      "purpose": "tutorial_scale_end_to_end_validation"
     }
   ]
 }

@@ -509,14 +509,17 @@ using `replace`.
 | --- | --- | ---: | ---: | ---: |
 | Quebec | `quebec-20261108233711` | 148,698,370 | 497 files, 6.454 GB | 5,530.778 / 5,922.575 s |
 | London | `london-20261109142209` | 13,346,901 | 46 files, 588.846 MB | 549.270 / 604.629 s |
+| Monaco | `monaco-20261110T023307Z` | 48,469 | 3 files, 2.563 MB | 2.369 / 30.418 s |
 
 Derived parse throughput is 26,885.6 entities/s for Quebec
 (`148,698,370 / 5,530.778`) and 24,299.3 for London
 (`13,346,901 / 549.270`). Both rates use manifest parse seconds and exclude
 download and publication; two runs are not a scaling study.
 
-Both historical runs used the older writer, which rotated at 300,000 rows.
-The current code rotates at 250,000 rows and has not been run in AWS.
+Quebec and London used the older writer, which rotated at 300,000 rows. The
+current code rotates at 250,000 rows and was run in AWS for the Monaco
+tutorial validation above; each Monaco entity fit in a single file, so the
+rotation threshold itself remains unexercised in AWS.
 
 Quebec Athena entity counts matched the S3 manifest. Two Quebec jobs overlapped
 on that partition, so these figures are not a single-job cost baseline. London
@@ -569,8 +572,9 @@ The S3 gateway endpoint is associated with the VPC main route table; custom
 subnets may need explicit endpoint routing. Batch egress is open by default.
 Glue partition projection is configured for `osm_curated`: queries must filter
 on `region` and `ymd`, while `entity` is projected from its three-value enum.
-This table change is implemented in the repository but has not been deployed or
-verified in AWS. The project processes full snapshots; it does not apply OSM
+This table replaced the retired Glue crawler and was deployed and queried via
+Athena during the 2026-11-10 Monaco tutorial validation above. The project
+processes full snapshots; it does not apply OSM
 diffs, compact files or reconstruct relation geometry.
 
 ## Data attribution

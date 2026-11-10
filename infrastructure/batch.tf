@@ -21,8 +21,10 @@ resource "aws_batch_compute_environment" "osm_compute" {
     min_vcpus     = local.is_fargate ? null : var.batch_min_vcpus
     desired_vcpus = local.is_fargate ? null : var.batch_desired_vcpus
 
-    subnets            = local.subnet_ids
-    security_group_ids = local.is_fargate ? null : [aws_security_group.batch[0].id]
+    subnets = local.subnet_ids
+    # The Batch API requires at least one security group id for FARGATE
+    # compute environments (Fargate does not support launch templates).
+    security_group_ids = local.is_fargate ? [aws_security_group.batch_fargate[0].id] : [aws_security_group.batch[0].id]
 
     instance_type       = local.is_fargate ? null : var.batch_instance_types
     instance_role       = local.is_fargate ? null : aws_iam_instance_profile.ecs_instance_profile[0].arn
@@ -34,6 +36,7 @@ resource "aws_batch_compute_environment" "osm_compute" {
     aws_iam_role_policy_attachment.batch_service_policy,
     aws_iam_role_policy_attachment.ecs_instance_policy,
     aws_security_group.batch,
+    aws_security_group.batch_fargate,
   ] # tflint-ignore: terraform_unused_depends_on
 }
 

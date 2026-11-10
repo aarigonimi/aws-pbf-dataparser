@@ -124,7 +124,7 @@ SIGTERM handlers allow the process to stop cooperatively and be retried.
 | `providers.tf` | AWS provider, default tags, caller identity |
 | `locals.tf` | Bucket names, VPC/subnet selection, container properties |
 | `variables.tf` | All inputs with validation |
-| `networking.tf` | Default/selected VPC data sources, Batch security group |
+| `networking.tf` | Default/selected VPC data sources, Batch security groups (EC2 and Fargate) |
 | `endpoints.tf` | Fargate ECR/Logs interface endpoints and S3 gateway endpoint |
 | `s3.tf` | Buckets, public access blocks, versioning, SSE, lifecycle, TLS policies |
 | `ecr.tf` | Repository, scanning, encryption, lifecycle policy |

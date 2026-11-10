@@ -66,7 +66,8 @@ Terraform creates:
   versioning and lifecycle rules.
 - ECR repository and image retention/scanning configuration.
 - Batch compute environment, queue, job definition, roles and log group.
-- VPC security group and, for Fargate, ECR/Logs interface endpoints and an S3
+- VPC security groups (EC2 workers and, for Fargate, task ENIs, which the
+  Batch API requires) and, for Fargate, ECR/Logs interface endpoints and an S3
   gateway endpoint. The stack uses an existing VPC and does not create a NAT
   gateway or subnets.
 - Glue database and partition-projected Parquet table, plus an Athena workgroup with a results prefix and an
@@ -74,7 +75,9 @@ Terraform creates:
   `athena_bytes_scanned_cutoff` to enforce one.
 
 The projected table replaces the previous crawler configuration in this
-repository. This change has not been deployed or verified in AWS. For an
+repository. It was deployed on 2026-11-10 during the migration that retired
+the crawler stack, and queried via Athena in the Monaco tutorial validation
+(see [benchmarks](benchmarks/README.md)). For an
 existing stack, inspect the Terraform plan for crawler removal and creation of
 `osm_curated` before applying it; the historical benchmark records describe the
 earlier catalog setup.

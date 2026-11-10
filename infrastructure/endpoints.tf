@@ -9,8 +9,10 @@ resource "aws_security_group" "vpc_endpoints" {
   description = "Allow Batch Fargate tasks to reach ECR, CloudWatch Logs and S3"
   vpc_id      = local.vpc_id
 
-  # Fargate tasks run on Batch-managed ENIs that do not carry the EC2
-  # security group, so the endpoints accept HTTPS from the whole VPC CIDR.
+  # The endpoints accept HTTPS from the whole VPC CIDR rather than from the
+  # batch-fargate security group: an SG-referencing-SG rule couples the two
+  # groups' deletion order (EC2 blocks deleting a referenced group), which
+  # makes infrastructure replacement and teardown brittle.
   ingress {
     description = "HTTPS from the VPC (Batch Fargate tasks)"
     from_port   = 443

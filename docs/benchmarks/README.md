@@ -13,18 +13,25 @@ manifest parse seconds. It excludes input download and final publication.
 | --- | --- | ---: | ---: | ---: | --- |
 | Quebec | `quebec-20261108233711` | 148,698,370 | 497 files, 6.454 GB | 5,530.778 / 5,922.575 s; 26,885.6 entities/s | S3 manifest, Glue schema and Athena entity counts verified |
 | London | `london-20261109142209` | 13,346,901 | 46 files, 588.846 MB | 549.270 / 604.629 s; 24,299.3 entities/s | Existing S3 manifest, Glue tables and Batch success verified; Athena counts not queried |
+| Monaco | `monaco-20261110T023307Z` | 48,469 | 3 files, 2.563 MB | 2.369 / 30.418 s; 20,459.7 entities/s | Tutorial-scale run of the current image: manifest, Glue table, Athena counts, sample rows and all three overwrite modes verified |
+
+The Monaco row is a tutorial-scale validation of the current code, not a
+throughput data point: 0.7 MB input, one file per entity, 2.4 s parse.
 
 Derived parse rates: Quebec **26,885.6 entities/s**
 (`148,698,370 / 5,530.778`) and London **24,299.3 entities/s**
 (`13,346,901 / 549.270`). These are two different extracts and are not a
 scaling study.
 
-Both historical runs used the older writer, which rotated at 300,000 rows.
-The current code rotates at 250,000 rows and has not been run in AWS.
+Quebec and London used the older writer, which rotated at 300,000 rows. The
+current code rotates at 250,000 rows and was run in AWS for the Monaco
+tutorial validation, but each entity fit in a single file, so the rotation
+threshold itself remains unexercised in AWS.
 
 The London run was already complete when this audit began. No London job was
-submitted by this audit. See [Quebec](quebec-20261108.json) and
-[London](london-20261108.json) for details and provenance.
+submitted by this audit. See [Quebec](quebec-20261108.json),
+[London](london-20261108.json) and [Monaco](monaco-20261108.json) for
+details and provenance.
 
 Two Quebec Batch jobs overlapped on the same partition. The job represented by
 the final manifest completed in one attempt. A second job had two ECR
