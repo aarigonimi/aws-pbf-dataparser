@@ -31,8 +31,10 @@ Two Quebec Batch jobs overlapped on the same partition. The job represented by
 the final manifest completed in one attempt. A second job had two ECR
 initialization timeouts, succeeded on its third attempt, and also processed the
 same input and output partition. Treat the 2026 Quebec run as evidence of
-throughput, not as a single-job cost baseline. Enforce one job per partition
-externally until the pipeline has a distributed lock.
+throughput, not as a single-job cost baseline. The pipeline now serializes
+publication per partition with an S3 conditional-write claim, so a rerun of
+this scenario fails fast instead of interleaving output; the historical figures
+predate that fix.
 
 The Quebec manifest duration is measured before the final S3 publication.
 CloudWatch recorded 5,894.62 seconds from the application start to completion;

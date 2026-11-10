@@ -27,12 +27,23 @@ retries any failure that matches no rule, which would re-run configuration
 
 ## Two jobs published the same partition
 
-The pipeline checks for existing outputs before processing, but there is no
-distributed lock. Two jobs submitted for the same region/date both pass the
-`OVERWRITE=error` check and both publish; the last manifest copy wins. This
-happened during the Quebec run. `scripts/submit_job.sh` refuses to submit while
-a non-terminal job named `osm-<region>-*` exists in the queue; set
-`ALLOW_CONCURRENT=true` only when you have ruled out overlap.
+Publication is serialized per partition with an S3 conditional-write claim:
+before doing any work a run writes `region=<region>/ymd=<ymd>/_lock.json`
+with `If-None-Match: *`, and only one concurrent run can acquire it. The
+losing runs fail fast with exit code 4 (`OutputConflictError`) and leave
+the winner's output untouched. This replaced the pre-claim behavior where
+two jobs could both pass the `OVERWRITE=error` check and interleave their
+copies (observed during the Quebec run). `scripts/submit_job.sh` still
+refuses to submit while a non-terminal job named `osm-<region>-*` exists
+in the queue; set `ALLOW_CONCURRENT=true` only when you have ruled out
+overlap.
+
+The claim is not a lease. If the claim holder is terminated without
+cleanup (host failure, job cancellation mid-run), the claim object
+remains and later runs fail with exit code 4 pointing at it. After
+confirming no run is active, recover with
+`OVERWRITE=replace` (`REGION_NAME=... YMD=... OVERWRITE=replace ./scripts/submit_job.sh`),
+which force-removes the stale claim before reclaiming.
 
 ## S3 access denied
 
@@ -43,21 +54,21 @@ logs. Check bucket name, region, object key, IAM policy and any organization
 SCP or permission boundary.
 
 S3 authorization codes map to exit code 5 (`AccessDeniedError`) and are not
-retried. This classification covers downloads, metadata checks, listing,
-uploads and copies; botocore transport errors, throttling and server failures
-remain retryable. The missing-object `exists()` check uses prefix-conditioned
-`ListObjectsV2` and compares the returned key exactly. Verify this behavior in
-a real small AWS smoke run under the deployed job role before relying on it;
-it has not been verified against the live IAM policy.
+retried. This classification covers downloads, metadata checks (including the
+head-based `exists()` probe and the conditional claim write), listing, uploads
+and copies; botocore transport errors, throttling and server failures remain
+retryable. The claim write itself only needs `s3:PutObject` on the curated
+prefix, which the job policy already grants.
 
 ## Output conflict
 
-`OVERWRITE=error` returns exit code 4 when a manifest or stray output exists.
-Use `skip` only when the existing manifest denotes the desired completed
-output. `replace` is not atomic: save the old manifest and review object
-versions before using it. The replacement removes the old manifest first; if
-the job fails, the partition may remain without a manifest and must not be
-queried until recovery completes.
+`OVERWRITE=error` returns exit code 4 when a manifest, stray output or another
+run's partition claim exists. Use `skip` only when the existing manifest
+denotes the desired completed output. `replace` removes stale keys *before*
+publishing new data and copies the new manifest last, so a failed replacement
+leaves no manifest rather than a manifest over incomplete data; do not query
+the partition until a new manifest exists. `replace` also force-removes a
+stale claim from a terminated run — confirm no run is active first.
 
 ## Athena cannot resolve projected partitions
 

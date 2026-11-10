@@ -161,12 +161,15 @@ The manifest does not block direct Athena queries or S3 listings from seeing
 partial data while final keys are being copied.
 
 `OVERWRITE=error` protects an existing partition; `skip` treats a manifest as
-completion; `replace` republishes and removes stale keys. There is no
-distributed partition lock, and failed replacement does not restore prior
-versions automatically. Enforce one job per `region`/`ymd`; `scripts/submit_job.sh`
-refuses to submit while another `osm-<region>-*` job is active in the queue
-unless `ALLOW_CONCURRENT=true`. Review
-[publication semantics](docs/ARCHITECTURE.md) before using `replace`.
+completion; `replace` republishes and removes stale keys before publishing.
+Publication is serialized per `region`/`ymd` partition by an S3
+conditional-write claim (`_lock.json`): a second concurrent run fails fast
+with exit code 4 instead of interleaving its copies. The claim is released
+when the run finishes; a stale claim from a terminated run is recovered with
+`OVERWRITE=replace`. Failed replacement does not restore prior versions
+automatically. `scripts/submit_job.sh` still refuses to submit while another
+`osm-<region>-*` job is active in the queue unless `ALLOW_CONCURRENT=true`.
+Review [publication semantics](docs/ARCHITECTURE.md) before using `replace`.
 
 ## Verified benchmark evidence
 

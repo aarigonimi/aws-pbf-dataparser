@@ -6,8 +6,11 @@ the project's [license and attribution notes](../README.md#data-attribution).
 This project does not download regional extracts automatically.
 
 After deployment and image push, set the values from Terraform outputs and
-choose a unique region/date/run ID. `YMD` is the extract's date and also the
+choose a unique region/date. `YMD` is the extract's date and also the
 output partition. Do not reuse a completed partition with `OVERWRITE=error`.
+`RUN_ID` is optional under Batch: unset, it defaults to a unique value
+derived from the Batch job ID and attempt number, so each attempt stages
+under its own prefix. Set it explicitly only for local runs.
 
 ```bash
 export AWS_REGION="us-east-1"
@@ -45,11 +48,12 @@ objects and logs, then resubmit with the same region/date and `OVERWRITE=replace
 REGION_NAME="$REGION_NAME" YMD="$YMD" OVERWRITE=replace ./scripts/submit_job.sh
 ```
 
-The replacement path removes an existing manifest before overwriting data,
-publishes a new manifest after all data copies, then removes stale keys. If the
-replacement fails, do not query the partition until a new manifest exists and
-its contents match the objects. The old object versions remain available for
-manual recovery when bucket versioning is enabled.
+The replacement path force-removes any stale partition claim, removes
+stale objects *before* overwriting data, and publishes the new manifest
+after all data copies. If the replacement fails, do not query the partition
+until a new manifest exists and its contents match the objects. The old
+object versions remain available for manual recovery when bucket
+versioning is enabled.
 
 Inspect the submitted job ID from the CLI response, then poll it:
 

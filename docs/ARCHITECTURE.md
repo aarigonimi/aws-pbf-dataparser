@@ -18,32 +18,39 @@
 ## Data flow
 
 1. A caller uploads an extract to
-   `s3://<raw>/region=<region>/ymd=<ymd>/<file>.osm.pbf`.
+   `s3://<raw>/region=<region>/ymd=<YYYYMMDD>/<file>.osm.pbf`.
 2. `scripts/submit_job.sh` submits the Batch job with container overrides for
    the run (`RAW_KEY`, `RUN_ID`, `OUTPUT_BUCKET`, `OVERWRITE`, ...).
-3. The container downloads the PBF to local ephemeral storage. The PBF is never
+3. The job claims the partition: a conditional write (`If-None-Match: *`) of
+   `_lock.json` under the final partition prefix. Only one concurrent run can
+   hold the claim; the others fail with exit code 4 before doing any work.
+   `RUN_ID` defaults to a value derived from `AWS_BATCH_JOB_ID` plus the
+   attempt number, so every Batch attempt stages under a unique prefix.
+4. The existing-output check is re-run under the claim (a run may have
+   published between the first check and claim acquisition).
+5. The container downloads the PBF to local ephemeral storage. The PBF is never
    loaded into memory as a whole.
-4. PyOsmium streams entities. Each selected entity type gets its own
+6. PyOsmium streams entities. Each selected entity type gets its own
    `ParquetSink`. Sinks flush row groups and rotate part files when
-   `MAX_RECORDS_PER_FILE` is reached.
-5. Local Parquet files are uploaded to
+   `MAX_RECORDS_PER_FILE` is reached; a part file never exceeds the cap.
+7. Local Parquet files are uploaded to
    `s3://<curated>/<prefix>/_staging/run_id=<run>/...`.
-6. The manifest is uploaded to staging.
-7. Data objects are copied to their final keys under
-   `<prefix>/region=<region>/ymd=<ymd>/entity=<entity>/`.
-8. The manifest is copied to its final key **last**. A final manifest is the
-   completion marker for readers that check it before querying.
-9. Staging objects are deleted on a best-effort basis; the lifecycle rule is
-   the fallback for abandoned staging objects.
-10. In `OVERWRITE=replace`, stale objects under the partition prefix (keys not
-    in the new manifest and not the manifest itself) are deleted after the new
-    manifest is published.
+8. The manifest is uploaded to staging.
+9. In `OVERWRITE=replace`, stale objects under the partition prefix (keys not
+   in the new manifest, not the manifest itself, and not the claim) are
+   deleted *before* any new data is published.
+10. Data objects are copied to their final keys under
+    `<prefix>/region=<region>/ymd=<ymd>/entity=<entity>/`.
+11. The manifest is copied to its final key **last**. A final manifest is the
+    completion marker for readers that check it before querying.
+12. Staging objects are deleted on a best-effort basis; the lifecycle rule is
+    the fallback for abandoned staging objects. The claim is released on
+    success, failure and cancellation.
 
-In `OVERWRITE=replace`, the pipeline records the pre-existing keys and removes
-the old manifest before copying replacement data. If publishing fails, rollback
-deletes only keys that did not exist before the run; overwritten keys remain
-and may contain new data without a manifest. S3 versioning retains prior object
-versions for manual recovery, but the pipeline does not restore them
+In `OVERWRITE=replace`, the pipeline removes stale keys before publishing new
+data, so a failed run never leaves a manifest referencing missing files: it
+leaves no manifest at all, which readers gate on. Overwritten keys keep prior
+object versions for manual recovery; the pipeline does not restore them
 automatically. `replace` is not a distributed transaction.
 
 The manifest does not gate S3 or Athena visibility. Direct S3 listings and
@@ -58,9 +65,13 @@ progress or after a failed rollback. Query a partition only after its final
 - `OVERWRITE=error` refuses to clobber an existing manifest or stray data.
 - `OVERWRITE=skip` treats a manifest as proof of completion and fails when data
   exists without a manifest (a partial previous run).
-- `OVERWRITE=replace` republishes and cleans stale keys.
-
-There is no distributed lock. Run one job per `region`/`ymd` partition.
+- `OVERWRITE=replace` republishes, force-removes a stale claim, and cleans
+  stale keys before publishing.
+- Publication is serialized per `region`/`ymd` partition by the conditional-
+  write claim (`_lock.json`); a run that loses the race fails fast with exit
+  code 4 and leaves the winner's output untouched. The claim is released when
+  the run finishes, so it is not a lease: a holder killed without cleanup
+  leaves the claim behind and recovery is `OVERWRITE=replace`.
 
 ## Failure and retry model
 
