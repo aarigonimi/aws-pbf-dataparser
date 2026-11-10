@@ -36,7 +36,7 @@ def test_pbf_to_published_parquet(tmp_path: Path, sample_pbf: bytes, include_way
     result = run_pipeline(config, s3=s3)
 
     assert result.record_counts == {"nodes": 3, "ways": 1, "relations": 1}
-    prefix = "curated/region=monaco/ymd=20261108"
+    prefix = "curated/region=monaco/2026/11/08"
     manifest = json.loads(s3.objects[f"{prefix}/_manifest.json"])
     assert manifest["status"] == "success"
     assert manifest["total_records"] == 5

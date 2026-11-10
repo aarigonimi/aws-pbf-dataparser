@@ -39,7 +39,7 @@ elif args[:2] == ["s3", "cp"]:
 def _run_validator(tmp_path: Path, manifest_found: bool) -> subprocess.CompletedProcess[str]:
     region = "monaco"
     ymd = "20261108"
-    prefix = f"curated/region={region}/ymd={ymd}/"
+    prefix = f"curated/region={region}/{ymd[0:4]}/{ymd[4:6]}/{ymd[6:8]}/"
     env = os.environ.copy()
     env.update(
         {
@@ -74,5 +74,5 @@ def test_validate_output_continues_when_manifest_exists(tmp_path: Path) -> None:
     result = _run_validator(tmp_path, manifest_found=True)
 
     assert result.returncode == 0
-    assert "Objects in s3://curated-bucket/curated/region=monaco/ymd=20261108/" in result.stdout
+    assert "Objects in s3://curated-bucket/curated/region=monaco/2026/11/08/" in result.stdout
     assert '{"status":"success"}' in result.stdout

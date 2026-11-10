@@ -19,7 +19,7 @@ The job is configured entirely through environment variables:
 
   RAW_BUCKET              (required) bucket containing the PBF extract
   OUTPUT_BUCKET           (required) bucket receiving Parquet output
-  RAW_KEY                 explicit input key (default: region=/ymd= layout)
+  RAW_KEY                 explicit input key (default: region=/yyyy/mm/dd layout)
   REGION_NAME             logical region name (default: monaco)
   RUN_ID                  unique run identifier (default: local-run)
   YMD                     partition date YYYYMMDD (default: today or from RAW_KEY)

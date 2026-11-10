@@ -40,7 +40,7 @@ export JOB_DEFINITION="$(terraform -chdir=infrastructure output -raw batch_job_d
 export REGION_NAME="monaco"
 export YMD="20261108" # Replace with the date associated with your extract.
 export RUN_ID="${REGION_NAME}-$(date -u +%Y%m%dT%H%M%SZ)"
-export RAW_KEY="region=${REGION_NAME}/ymd=${YMD}/${REGION_NAME}-${YMD}.osm.pbf"
+export RAW_KEY="region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/${REGION_NAME}-${YMD}.osm.pbf"
 export OUTPUT_PREFIX="curated"
 export MODE="all"
 export OVERWRITE="error"

@@ -13,7 +13,7 @@ from src.transformations import (
     build_way_record,
 )
 
-INPUT_KEY = "region=monaco/ymd=20261108/monaco-20261108.osm.pbf"
+INPUT_KEY = "region=monaco/2026/11/08/monaco-20261108.osm.pbf"
 
 
 class FakeS3:
@@ -32,8 +32,7 @@ class FakeS3:
 
     def _manifest_present(self):
         return any(
-            "/_staging/" not in key and "/ymd=" in key and key.endswith("/_manifest.json")
-            for key in self.objects
+            "/_staging/" not in key and key.endswith("/_manifest.json") for key in self.objects
         )
 
     def head(self, bucket, key):
@@ -145,8 +144,8 @@ def test_successful_run_publishes_data_and_manifest_last(tmp_path: Path):
     manifest = json.loads(fake.objects[result.manifest_key])
     assert manifest["image_digest"] is None
     assert manifest["git_sha"] is None
-    assert result.manifest_key == ("curated/region=monaco/ymd=20261108/_manifest.json")
-    assert "curated/region=monaco/ymd=20261108/entity=nodes/part-00000.parquet" in fake.objects
+    assert result.manifest_key == ("curated/region=monaco/2026/11/08/_manifest.json")
+    assert "curated/region=monaco/2026/11/08/entity=nodes/part-00000.parquet" in fake.objects
     assert not any(key.startswith("curated/_staging/") for key in fake.objects)
     data_uploads = [key for key, _ in fake.upload_events if key.endswith(".parquet")]
     assert len(data_uploads) == 3
@@ -177,7 +176,7 @@ def test_existing_manifest_is_a_conflict_in_error_mode(tmp_path: Path):
 
 def test_stray_output_without_manifest_is_a_conflict(tmp_path: Path):
     config = _config(tmp_path)
-    stale_key = "curated/region=monaco/ymd=20261108/entity=nodes/part-00000.parquet"
+    stale_key = "curated/region=monaco/2026/11/08/entity=nodes/part-00000.parquet"
     fake = FakeS3({INPUT_KEY: b"pbf-bytes", stale_key: b"stale"})
 
     with pytest.raises(OutputConflictError):
@@ -201,7 +200,7 @@ def test_skip_mode_returns_skipped_without_processing(tmp_path: Path):
 
 def test_skip_mode_rejects_stray_output(tmp_path: Path):
     config = _config(tmp_path, OVERWRITE="skip")
-    stale_key = "curated/region=monaco/ymd=20261108/entity=nodes/part-00000.parquet"
+    stale_key = "curated/region=monaco/2026/11/08/entity=nodes/part-00000.parquet"
     fake = FakeS3({INPUT_KEY: b"pbf-bytes", stale_key: b"stale"})
 
     with pytest.raises(OutputConflictError) as raised:
@@ -215,7 +214,7 @@ def test_skip_mode_rejects_stray_output(tmp_path: Path):
 def test_replace_mode_removes_stale_objects(tmp_path: Path):
     config = _config(tmp_path, OVERWRITE="replace")
     manifest_key = f"{config.output_prefix}/{config.manifest_relative_key}"
-    stale_key = "curated/region=monaco/ymd=20261108/entity=nodes/part-99999.parquet"
+    stale_key = "curated/region=monaco/2026/11/08/entity=nodes/part-99999.parquet"
     fake = FakeS3({INPUT_KEY: b"pbf-bytes", manifest_key: b"{}", stale_key: b"old"})
 
     result = run_pipeline(config, s3=fake, processor=_processor())
@@ -329,7 +328,7 @@ def test_publish_failure_rolls_back_new_objects(tmp_path: Path):
 
     assert manifest_key not in fake.objects
     assert not any(
-        key.startswith("curated/region=monaco/ymd=20261108/entity=") for key in fake.objects
+        key.startswith("curated/region=monaco/2026/11/08/entity=") for key in fake.objects
     )
     assert not any(key.startswith("curated/_staging/") for key in fake.objects)
 

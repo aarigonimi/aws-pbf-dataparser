@@ -5,7 +5,7 @@ REGION_NAME="${REGION_NAME:-monaco}"
 RUN_ID="${RUN_ID:-${REGION_NAME}-$(date +%Y%m%d%H%M%S)}"
 YMD="${YMD:-$(date +%Y%m%d)}"
 RAW_BUCKET="${RAW_BUCKET:?Set RAW_BUCKET to the S3 bucket containing the PBF extract}"
-RAW_KEY="${RAW_KEY:-region=${REGION_NAME}/ymd=${YMD}/${REGION_NAME}-${YMD}.osm.pbf}"
+RAW_KEY="${RAW_KEY:-region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/${REGION_NAME}-${YMD}.osm.pbf}"
 OUTPUT_BUCKET="${OUTPUT_BUCKET:?Set OUTPUT_BUCKET to the curated S3 bucket}"
 OUTPUT_PREFIX="${OUTPUT_PREFIX:-curated}"
 JOB_QUEUE="${JOB_QUEUE:?Set JOB_QUEUE to an existing AWS Batch queue}"
@@ -19,7 +19,7 @@ LOG_LEVEL="${LOG_LEVEL:-INFO}"
 ALLOW_CONCURRENT="${ALLOW_CONCURRENT:-false}"
 
 # Belt and braces on top of the pipeline's partition claim: publication is
-# serialized per region/ymd by an S3 conditional write (_lock.json), and a
+# serialized per region/date by an S3 conditional write (_lock.json), and a
 # losing run fails fast with exit 4. This client-side guard additionally
 # avoids queueing a second job for the same region while one is active,
 # which saves the wasted job run entirely.

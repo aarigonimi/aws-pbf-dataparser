@@ -27,7 +27,7 @@ PBF is excellent for distribution. Delta-encoded IDs and coordinates make it ver
 2. **Size grows fast once decoded.** The Quebec extract used here is **1,166,570,375 bytes** (1.17 GB) on disk. It decodes to **148,698,370 entities**. Materializing that as Python objects at once is not an option on a reasonably sized machine.
 3. **The work is long, sequential and disk-heavy.** The Quebec decode took about 92 minutes on 2 vCPUs. That rules out short-lived serverless functions and suggests a queue-based batch service with local scratch storage.
 
-The goal is a pipeline that turns one regional PBF snapshot into **typed, compressed Parquet files** in Amazon S3, partitioned by `region`, `ymd` (extract date) and `entity`. The files are cataloged by AWS Glue and queried with standard SQL in Amazon Athena.
+The goal is a pipeline that turns one regional PBF snapshot into **typed, compressed Parquet files** in Amazon S3, partitioned by `region`, extract date (`yyyy/mm/dd`) and `entity`. The files are cataloged by AWS Glue and queried with standard SQL in Amazon Athena.
 
 ### What you will build
 
@@ -39,10 +39,10 @@ By the end of this article you will have:
 - A safe publication protocol: stage, copy, then write the manifest last.
 - A validation loop: S3 manifest → projected Glue table → Athena counts compared with the manifest.
 
-The historical Quebec output looked like this:
+The historical Quebec output used the layout current at that time (`ymd=<YYYYMMDD>`); the repository now writes `region=<region>/<yyyy>/<mm>/<dd>/` and the existing S3 data was relocated to it on 2026-11-10:
 
 ```text
-s3://<curated-bucket>/curated/region=quebec/ymd=20261108/
+s3://<curated-bucket>/curated/region=quebec/2026/11/08/
   entity=nodes/part-00000.parquet ... part-00462.parquet      (463 files)
   entity=ways/part-00000.parquet ... part-00032.parquet       (33 files)
   entity=relations/part-00000.parquet                         (1 file)
@@ -67,7 +67,7 @@ The diagram below is drawn from the Terraform resources and Python modules in th
 
 ```mermaid
 flowchart LR
-    PBF[Regional .osm.pbf extract] -->|aws s3 cp| RAW[(S3 raw bucket<br/>region=R/ymd=D/*.osm.pbf)]
+    PBF[Regional .osm.pbf extract] -->|aws s3 cp| RAW[(S3 raw bucket<br/>region=R/2026/11/08/*.osm.pbf)]
     DOCKER[docker buildx] -->|push tag| ECR[(Amazon ECR)]
     SUBMIT[scripts/submit_job.sh] -->|submit-job + env overrides| QUEUE[AWS Batch job queue]
 
@@ -83,18 +83,18 @@ flowchart LR
     RAW -->|GetObject via| EP_S3 --> JOB
     JOB -->|PyOsmium SimpleHandler| SINKS[ParquetSink x3]
     SINKS -->|upload| STAGE[(curated/_staging/run_id=X/)]
-    STAGE -->|copy data, then _manifest.json last| CURATED[(curated/region=R/ymd=D/entity=E/)]
+    STAGE -->|copy data, then _manifest.json last| CURATED[(curated/region=R/2026/11/08/entity=E/)]
     CURATED --> CATALOG[Glue projected table] --> ATHENA[Amazon Athena]
 ```
 
 | Service | Responsibility in this project | Why this service | Alternatives considered | Trade-off accepted |
 | --- | --- | --- | --- | --- |
-| **Amazon S3 (raw)** | Holds the input PBF under `region=<r>/ymd=<d>/` | Durable, cheap, readable by Batch through a gateway endpoint | EFS, or downloading from the OSM mirror inside the job | One extra upload step. In return, the job never depends on an external mirror. |
+| **Amazon S3 (raw)** | Holds the input PBF under `region=<r>/<yyyy>/<mm>/<dd>/` | Durable, cheap, readable by Batch through a gateway endpoint | EFS, or downloading from the OSM mirror inside the job | One extra upload step. In return, the job never depends on an external mirror. |
 | **AWS Batch (Fargate)** | Queues and runs one container per extract, with retries and a timeout | A long, single-process job; built-in queue, retry rules and job status | Lambda (a standard invocation is limited to 15 minutes), ECS `RunTask` (no Batch queue or retry semantics), EMR/Glue Spark (PBF is not splittable without extra tooling) | No auto-parallelism: one extract is one task. This stack uses standard Fargate, not Fargate Spot. Its Terraform also supports EC2/Spot, with instance and capacity-management trade-offs. |
 | **Python + PyOsmium** | Streaming PBF decode with callbacks per node/way/relation | The C++ libosmium parser behind a simple Python handler API; no full materialization | `osmium-tool` CLI export, Java/Osmosis, Spark readers | Single-threaded Python callbacks become the throughput limit (see §10). |
 | **PyArrow** | Explicit-schema Parquet with Snappy, row groups and file rotation | Standard columnar format readable by Athena and Glue | GeoParquet, ORC, CSV | Geometry stored as WKT text, not native geometry. |
 | **Amazon S3 (curated)** | Staging prefix, final partitions, manifest, Athena results | Single bucket with lifecycle rules per prefix | Separate buckets per stage | Prefix-scoped IAM and lifecycle rules must stay in sync. |
-| **AWS Glue Data Catalog** | Stores the explicit `osm_curated` schema and projected partitions | One stable table covers all region/date/entity prefixes | A crawler or manual partition registration | Projection avoids crawler-created leaf tables; `region` and `ymd` must be constrained in each query. This Terraform change is not deployed or AWS-verified yet. |
+| **AWS Glue Data Catalog** | Stores the explicit `osm_curated` schema and projected partitions | One stable table covers all region/date/entity prefixes | A crawler or manual partition registration | Projection avoids crawler-created leaf tables; `region`, `year`, `month` and `day` must be constrained in each query. |
 | **Amazon Athena** | SQL validation and analytics | Serverless, pay per query, reads the Glue catalog | Redshift Spectrum, local DuckDB | Athena results land in S3 and need their own lifecycle rule. |
 | **CloudWatch Logs** | Application logs with run ID, timings and counts | Native `awslogs` driver on Batch | Firehose to S3 | Logs are text, so metrics are extracted by reading the log lines. |
 | **ECR** | Stores the job image | Same-region pulls through private endpoints | Docker Hub | Needs endpoints or internet egress, which is exactly what failed first (§7). |
@@ -140,8 +140,13 @@ The S3 layout is derived from the configuration, so it can never drift between w
 
 ```python
 @property
+def date_path(self) -> str:
+    """Partition directory for the run date: ``yyyy/mm/dd`` (zero-padded)."""
+    return f"{self.ymd[0:4]}/{self.ymd[4:6]}/{self.ymd[6:8]}"
+
+@property
 def curated_prefix(self) -> str:
-    return f"{self.output_prefix}/region={self.region_name}/ymd={self.ymd}"
+    return f"{self.output_prefix}/region={self.region_name}/{self.date_path}"
 ```
 
 The defaults that matter for memory are `MAX_RECORDS_PER_FILE=250000` and `ROW_GROUP_SIZE=100000`.
@@ -883,9 +888,9 @@ export JOB_QUEUE="$(terraform -chdir=infrastructure output -raw batch_job_queue_
 export JOB_DEFINITION="$(terraform -chdir=infrastructure output -raw batch_job_definition_name)"
 
 export REGION_NAME="monaco"           # start small; Quebec took about 1 h 39 min end to end
-export YMD="20261108"                 # the extract's date, also the output partition
+export YMD="20261108"                 # the extract's date (YYYYMMDD), also the output partition
 export RUN_ID="${REGION_NAME}-$(date -u +%Y%m%dT%H%M%SZ)"
-export RAW_KEY="region=${REGION_NAME}/ymd=${YMD}/${REGION_NAME}-${YMD}.osm.pbf"
+export RAW_KEY="region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/${REGION_NAME}-${YMD}.osm.pbf"
 export OUTPUT_PREFIX="curated"
 export MODE="all"                     # all | nodes | ways | relations
 export OVERWRITE="error"              # error | skip | replace
@@ -979,6 +984,8 @@ The job moves `SUBMITTED → RUNNABLE → STARTING → RUNNING → SUCCEEDED|FAI
 2026-11-09 06:16:45,700 INFO src.pipeline Run complete: status=success records={'nodes': 138606771, 'ways': 9897180, 'relations': 194419} files=497 output_bytes=6454025948 input_bytes=1166570375 duration=5894.62s manifest=s3://<curated-bucket>/curated/region=quebec/ymd=20261108/_manifest.json
 ```
 
+These quotes preserve the `ymd=<YYYYMMDD>` layout the run used at the time. The repository now writes `region=<region>/<yyyy>/<mm>/<dd>/` and the Quebec data was relocated to that layout on 2026-11-10; new logs show the new path.
+
 ---
 
 ## 7. Real-world troubleshooting
@@ -1046,7 +1053,7 @@ No data was corrupted. Both runs produced the same 497 keys, counts and byte tot
 What was changed and what is still open:
 
 - `scripts/submit_job.sh` now refuses to submit while a non-terminal `osm-<region>-*` job exists in the queue (§6.2).
-- That check runs on the client side and is racy if two operators submit at the same moment. A real lock, for example a DynamoDB conditional put on `region#ymd` acquired in `run_pipeline()` before the existence check, is listed as a P1 improvement.
+- That check runs on the client side and is racy if two operators submit at the same moment. A real lock, for example a DynamoDB conditional put on `region#date` acquired in `run_pipeline()` before the existence check, is listed as a P1 improvement.
 
 ### 7.4 Staging, cleanup and publication under failure
 
@@ -1075,19 +1082,21 @@ The Terraform now derives `platform_capabilities` from `batch_compute_type` and 
 
 ## 8. A stable Glue table with partition projection
 
-The previous catalog setup created leaf-level tables instead of one queryable partitioned table. I replaced it in Terraform with a single external table named `osm_curated` in the `osm_catalog` database. Its columns match the explicit Arrow schema in §3.4, with string partition keys `region`, `ymd` and `entity`.
+The previous catalog setup created leaf-level tables instead of one queryable partitioned table. I replaced it in Terraform with a single external table named `osm_curated` in the `osm_catalog` database. Its columns match the explicit Arrow schema in §3.4, with string partition keys `region`, `year`, `month`, `day` and `entity`.
 
 The table uses Parquet input/output formats and the `ParquetHiveSerDe`. Its projection parameters are:
 
 ```hcl
 "projection.enabled"       = "true"
 "projection.region.type"   = "injected"
-"projection.ymd.type"      = "injected"
+"projection.year.type"     = "injected"
+"projection.month.type"    = "injected"
+"projection.day.type"      = "injected"
 "projection.entity.type"   = "enum"
 "projection.entity.values" = "nodes,ways,relations"
 ```
 
-`storage.location.template` points to `s3://<curated>/<output_prefix>/region=$${region}/ymd=$${ymd}/entity=$${entity}/`. Injected values avoid maintaining a region or date catalog list; the enum bounds the entity partition to the three directories the writer creates. Since region and date are injected, queries must provide equality filters for both.
+`storage.location.template` points to `s3://<curated>/<output_prefix>/region=$${region}/$${year}/$${month}/$${day}/entity=$${entity}/`. Injected values avoid maintaining a region or date catalog list; the enum bounds the entity partition to the three directories the writer creates. Since region and date parts are injected, queries must provide equality filters for all four (`month` and `day` as zero-padded two-digit strings).
 
 The table is declared by `infrastructure/glue.tf`; there is no crawler to run. **This replacement was deployed on 2026-11-10, replacing the retired crawler stack, and was queried via Athena in the Monaco tutorial validation; the historical Quebec query also returned manifest-matching counts through the projected table.** The existing historical Glue crawler observations below describe the previous setup, not the new table. The manifest is not a catalog gate: query only after `_manifest.json` exists, and compare Athena results with it.
 
@@ -1147,7 +1156,7 @@ To run the comparison yourself:
 
 ```bash
 # Manifest side
-aws s3 cp "s3://${OUTPUT_BUCKET}/curated/region=${REGION_NAME}/ymd=${YMD}/_manifest.json" - \
+aws s3 cp "s3://${OUTPUT_BUCKET}/curated/region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/_manifest.json" - \
   | python3 -c 'import json,sys; m=json.load(sys.stdin); print(m["status"], m["record_counts"], m["total_records"])'
 
 # Athena side
@@ -1161,7 +1170,7 @@ aws athena get-query-execution --query-execution-id "$QID" \
 aws athena get-query-results --query-execution-id "$QID" --query 'ResultSet.Rows[].Data[].VarCharValue'
 ```
 
-The current repository query in `sql/athena/validate_entity_counts.sql` uses `osm_catalog.osm_curated` and filters on both injected partitions. It was run in AWS on 2026-11-10 via the Athena CLI: the Quebec filters returned the historical manifest counts (138,606,771 nodes / 9,897,180 ways / 194,419 relations), and the same query shape with Monaco filters matched the Monaco manifest.
+The current repository query in `sql/athena/validate_entity_counts.sql` uses `osm_catalog.osm_curated` and filters on all four injected partitions. It was run in AWS on 2026-11-10 via the Athena CLI: the Quebec filters returned the historical manifest counts (138,606,771 nodes / 9,897,180 ways / 194,419 relations), and the same query shape with Monaco filters matched the Monaco manifest.
 
 ### 9.2 File inventory consistency
 
@@ -1175,12 +1184,12 @@ For Quebec, S3 lists **497** `.parquet` objects totaling 6,454,025,948 bytes. Th
 
 ### 9.3 Sample records
 
-Query `029f222d...` (4,355,155 bytes scanned, 862 ms):
+Sample records (from the historical execution `029f222d...`: 4,355,155 bytes scanned, 862 ms; the SQL below is the current-layout equivalent):
 
 ```sql
 SELECT osm_type, osm_id, geometry, tags
 FROM osm_catalog.osm_curated
-WHERE region = 'quebec' AND ymd = '20261108' AND entity = 'nodes'
+WHERE region = 'quebec' AND year = '2026' AND month = '11' AND day = '08' AND entity = 'nodes'
 LIMIT 5
 ```
 
@@ -1201,21 +1210,21 @@ Some more useful analytical queries over the same tables (not part of the record
 -- Road network composition
 SELECT highway, count(*) AS ways
 FROM osm_catalog.osm_curated
-WHERE region = 'quebec' AND ymd = '20261108'
+WHERE region = 'quebec' AND year = '2026' AND month = '11' AND day = '08'
   AND entity = 'ways' AND highway IS NOT NULL
 GROUP BY highway ORDER BY ways DESC LIMIT 15;
 
 -- Points of interest by amenity, using a promoted column instead of JSON parsing
 SELECT amenity, count(*) AS nodes
 FROM osm_catalog.osm_curated
-WHERE region = 'quebec' AND ymd = '20261108'
+WHERE region = 'quebec' AND year = '2026' AND month = '11' AND day = '08'
   AND entity = 'nodes' AND amenity IS NOT NULL
 GROUP BY amenity ORDER BY nodes DESC LIMIT 15;
 
 -- Fall back to the full tag JSON for anything not promoted
 SELECT osm_id, json_extract_scalar(tags, '$.cuisine') AS cuisine
 FROM osm_catalog.osm_curated
-WHERE region = 'quebec' AND ymd = '20261108'
+WHERE region = 'quebec' AND year = '2026' AND month = '11' AND day = '08'
   AND entity = 'nodes' AND amenity = 'restaurant' LIMIT 20;
 ```
 
@@ -1286,7 +1295,7 @@ the rotation threshold itself remains unexercised in AWS.
 
 **Retries.** Two layers. botocore `standard` mode retries individual S3 calls with backoff. AWS Batch retries the whole attempt on exit 75 or a task initialization failure, and exits on everything else. Make sure your retry count multiplied by your attempt timeout (3 × 6 h) is a duration you are willing to pay for.
 
-**Idempotency.** The output location depends only on `(output_prefix, region, ymd, entity, file index)`. The output content depends only on the input file and settings. Re-running the same input with `OVERWRITE=replace` therefore produces the same keys. `OVERWRITE=error` turns accidental re-runs into fast failures (exit 4) before any download.
+**Idempotency.** The output location depends only on `(output_prefix, region, date path, entity, file index)`. The output content depends only on the input file and settings. Re-running the same input with `OVERWRITE=replace` therefore produces the same keys. `OVERWRITE=error` turns accidental re-runs into fast failures (exit 4) before any download.
 
 **Partial failures.** Manifest-last publication lets cooperating readers reject a partition until `_manifest.json` exists (§7.4). It does not gate Athena queries or S3 listings; those can expose partial data. The validation script checks for the manifest, but direct clients must apply the same rule. Replace now removes the old marker before copying and preserves pre-existing keys during rollback, but it is still not an atomic transaction; all three overwrite modes (`error` exit 4, `skip`, and `replace` with staging cleanup and no leftover objects) were verified in AWS on the small Monaco partition on 2026-11-10, but the rollback-after-mid-run-failure path was not.
 
@@ -1369,7 +1378,7 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 
 **Next improvements**, roughly in order of value:
 
-1. A DynamoDB conditional-write lock per `region#ymd`, taken inside `run_pipeline()`.
+1. A DynamoDB conditional-write lock per `region#date`, taken inside `run_pipeline()`.
 2. Run a vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract; capture peak CPU/memory and Cost Explorer data with the next clean run.
 3. GeoParquet output and relation multipolygon assembly.
 

@@ -15,6 +15,7 @@ VALID_MODES: Final = frozenset({"all", "nodes", "ways", "relations"})
 VALID_LOG_LEVELS: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 _ALLOWED_PATH_TOKEN: Final = re.compile(r"^[A-Za-z0-9._-]+$")
 _YMD_PATTERN: Final = re.compile(r"^\d{8}$")
+_DATE_PATH_PATTERN: Final = re.compile(r"(?:^|/)(\d{4})/(\d{2})/(\d{2})(?:/|$)")
 
 
 def _required(env: Mapping[str, str], name: str) -> str:
@@ -119,6 +120,9 @@ def _derive_ymd(env: Mapping[str, str], raw_key: str) -> str:
     for part in raw_key.split("/"):
         if part.startswith("ymd=") and len(part) > 4:
             return part[4:]
+    date_path = _DATE_PATH_PATTERN.search(raw_key)
+    if date_path:
+        return f"{date_path.group(1)}{date_path.group(2)}{date_path.group(3)}"
     return date.today().strftime("%Y%m%d")
 
 
@@ -159,19 +163,25 @@ class JobConfig:
         return self.raw_key.strip("/")
 
     @property
+    def date_path(self) -> str:
+        """Partition directory for the run date: ``yyyy/mm/dd`` (zero-padded)."""
+
+        return f"{self.ymd[0:4]}/{self.ymd[4:6]}/{self.ymd[6:8]}"
+
+    @property
     def curated_prefix(self) -> str:
-        return f"{self.output_prefix}/region={self.region_name}/ymd={self.ymd}"
+        return f"{self.output_prefix}/region={self.region_name}/{self.date_path}"
 
     @property
     def manifest_relative_key(self) -> str:
-        return f"region={self.region_name}/ymd={self.ymd}/_manifest.json"
+        return f"region={self.region_name}/{self.date_path}/_manifest.json"
 
     @property
     def lock_relative_key(self) -> str:
-        return f"region={self.region_name}/ymd={self.ymd}/_lock.json"
+        return f"region={self.region_name}/{self.date_path}/_lock.json"
 
     def entity_relative_prefix(self, entity_name: str) -> str:
-        return f"region={self.region_name}/ymd={self.ymd}/entity={entity_name}"
+        return f"region={self.region_name}/{self.date_path}/entity={entity_name}"
 
     def output_key(self, entity_name: str, file_name: str) -> str:
         return f"{self.entity_relative_prefix(entity_name)}/{file_name}"
@@ -203,7 +213,9 @@ class JobConfig:
         raw_key = source.get("RAW_KEY", "").strip().strip("/")
         ymd = _validate_ymd(_derive_ymd(source, raw_key))
         if not raw_key:
-            raw_key = f"region={region_name}/ymd={ymd}/{region_name}-{ymd}.osm.pbf"
+            raw_key = (
+                f"region={region_name}/{ymd[0:4]}/{ymd[4:6]}/{ymd[6:8]}/{region_name}-{ymd}.osm.pbf"
+            )
 
         compression = _choice(source, "PARQUET_COMPRESSION", "snappy", VALID_COMPRESSIONS)
         overwrite = _choice(source, "OVERWRITE", "error", VALID_OVERWRITE)

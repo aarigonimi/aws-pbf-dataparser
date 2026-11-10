@@ -4,7 +4,7 @@ flowchart LR
         DOCKER[docker buildx<br/>scripts/docker_build_push.sh]
     end
 
-    PBF[Regional .osm.pbf extract] -->|aws s3 cp| RAW[(S3 raw bucket<br/>region=R/ymd=D/*.osm.pbf)]
+    PBF[Regional .osm.pbf extract] -->|aws s3 cp| RAW[(S3 raw bucket<br/>region=R/2026/11/08/*.osm.pbf)]
     DOCKER -->|push tag| ECR[(Amazon ECR<br/>osm-pbf-batch)]
     SUBMIT[scripts/submit_job.sh] -->|submit-job + env overrides| QUEUE[AWS Batch job queue]
 
@@ -21,7 +21,7 @@ flowchart LR
 
     JOB -->|PyOsmium SimpleHandler| SINKS[ParquetSink x3<br/>nodes / ways / relations]
     SINKS -->|upload| STAGE[(S3 curated<br/>curated/_staging/run_id=X/)]
-    STAGE -->|copy data, then _manifest.json last| CURATED[(S3 curated<br/>curated/region=R/ymd=D/entity=E/)]
+    STAGE -->|copy data, then _manifest.json last| CURATED[(S3 curated<br/>curated/region=R/2026/11/08/entity=E/)]
     CURATED --> CATALOG[Glue projected table<br/>osm_catalog.osm_curated]
     CATALOG --> ATHENA[Amazon Athena<br/>osm-pbf-workgroup]
     ATHENA -->|results| RESULTS[(S3 curated<br/>athena-results/)]

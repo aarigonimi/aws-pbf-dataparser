@@ -6,7 +6,7 @@ Write Parquet and a manifest below a run-specific staging prefix, copy data
 objects to the final region/date/entity layout, then copy `_manifest.json` last.
 Before any work, a run must claim the partition with an S3 conditional write
 (`PutObject` with `If-None-Match: *`) on
-`<prefix>/region=<region>/ymd=<ymd>/_lock.json`; a run that cannot acquire the
+`<prefix>/region=<region>/<yyyy>/<mm>/<dd>/_lock.json`; a run that cannot acquire the
 claim fails with exit code 4 instead of publishing. Readers that check for the
 final manifest before querying can use it as a successful-run marker. The
 marker does not gate direct S3 listings or Athena queries.

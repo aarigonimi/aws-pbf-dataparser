@@ -28,7 +28,7 @@ schema reconciliation.
 ## Partitions
 
 ```text
-curated/region=<region>/ymd=<YYYYMMDD>/entity=<entity>/part-00000.parquet
+curated/region=<region>/<yyyy>/<mm>/<dd>/entity=<entity>/part-00000.parquet
 ```
 
 Hive partition columns inferred by Athena/Spark/Databricks:
@@ -36,7 +36,9 @@ Hive partition columns inferred by Athena/Spark/Databricks:
 | Partition | Example | Notes |
 | --- | --- | --- |
 | `region` | `monaco` | Logical source region |
-| `ymd` | `20261108` | Extract date, `YYYYMMDD` |
+| `year` | `2026` | Extract year |
+| `month` | `11` | Extract month, zero-padded |
+| `day` | `08` | Extract day, zero-padded |
 | `entity` | `nodes` | `nodes`, `ways` or `relations` |
 
 `entity` is both a partition and represented by `osm_type`. `osm_type` uses
@@ -77,8 +79,9 @@ partial output during publication.
 ## Athena DDL example
 
 Terraform creates `osm_catalog.osm_curated` with this explicit schema and
-partition projection. The `region` and `ymd` projection types are `injected`,
-so queries must supply both equality filters. `entity` is an enum of the three
+partition projection. The `region`, `year`, `month` and `day` projection types
+are `injected`, so queries must supply equality filters for all four (`month`
+and `day` are zero-padded two-digit strings). `entity` is an enum of the three
 supported partition directories:
 
 ```sql
@@ -100,16 +103,18 @@ CREATE EXTERNAL TABLE IF NOT EXISTS osm_catalog.osm_curated (
   tag_count int,
   tags string
 )
-PARTITIONED BY (region string, ymd string, entity string)
+PARTITIONED BY (region string, year string, month string, day string, entity string)
 STORED AS PARQUET
 LOCATION 's3://<curated-bucket>/curated/'
 TBLPROPERTIES (
   'projection.enabled' = 'true',
   'projection.region.type' = 'injected',
-  'projection.ymd.type' = 'injected',
+  'projection.year.type' = 'injected',
+  'projection.month.type' = 'injected',
+  'projection.day.type' = 'injected',
   'projection.entity.type' = 'enum',
   'projection.entity.values' = 'nodes,ways,relations',
-  'storage.location.template' = 's3://<curated-bucket>/curated/region=${region}/ymd=${ymd}/entity=${entity}/'
+  'storage.location.template' = 's3://<curated-bucket>/curated/region=${region}/${year}/${month}/${day}/entity=${entity}/'
 );
 ```
 
@@ -119,18 +124,15 @@ want a single element type:
 
 ```sql
 SELECT * FROM osm_catalog.osm_curated
-WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'nodes';
+WHERE region = 'monaco' AND year = '2026' AND month = '11' AND day = '08' AND entity = 'nodes';
 ```
-
-This projected table is implemented in the repository but has not been
-deployed or verified in AWS.
 
 ## Databricks
 
 ```sql
 CREATE TABLE IF NOT EXISTS osm.curated
 USING parquet
-PARTITIONED BY (region, ymd, entity)
+PARTITIONED BY (region, year, month, day, entity)
 LOCATION 's3://<curated-bucket>/curated/';
 ```
 
@@ -145,5 +147,5 @@ SELECT * FROM parquet.`s3://<curated-bucket>/curated/` LIMIT 10;
 - Bump `SCHEMA_VERSION` for any column addition/removal/type change.
 - Prefer additive nullable columns so old and new partitions can coexist.
 - Do not rename partition columns without a migration; readers depend on
-  `region`, `ymd` and `entity`.
+  `region`, `year`, `month`, `day` and `entity`.
 - Keep `tags`/`members` JSON encodings stable or bump the schema version.

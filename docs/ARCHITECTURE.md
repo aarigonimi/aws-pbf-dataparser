@@ -9,7 +9,7 @@ permalink: /docs/ARCHITECTURE/
 
 | Component | Responsibility |
 | --- | --- |
-| S3 raw bucket | Versioned source extracts under `region=<region>/ymd=<YYYYMMDD>/`, with lifecycle expiry |
+| S3 raw bucket | Versioned source extracts under `region=<region>/<yyyy>/<mm>/<dd>/`, with lifecycle expiry |
 | AWS Batch compute environment | Fargate (default) or EC2/Spot workers |
 | Batch job definition | Container image, vCPU/memory, env defaults, retries, timeout, log config |
 | Batch job queue | Schedules jobs onto the compute environment |
@@ -23,7 +23,7 @@ permalink: /docs/ARCHITECTURE/
 ## Data flow
 
 1. A caller uploads an extract to
-   `s3://<raw>/region=<region>/ymd=<YYYYMMDD>/<file>.osm.pbf`.
+   `s3://<raw>/region=<region>/<yyyy>/<mm>/<dd>/<file>.osm.pbf`.
 2. `scripts/submit_job.sh` submits the Batch job with container overrides for
    the run (`RAW_KEY`, `RUN_ID`, `OUTPUT_BUCKET`, `OVERWRITE`, ...).
 3. The job claims the partition: a conditional write (`If-None-Match: *`) of
@@ -45,7 +45,7 @@ permalink: /docs/ARCHITECTURE/
    in the new manifest, not the manifest itself, and not the claim) are
    deleted *before* any new data is published.
 10. Data objects are copied to their final keys under
-    `<prefix>/region=<region>/ymd=<ymd>/entity=<entity>/`.
+    `<prefix>/region=<region>/<yyyy>/<mm>/<dd>/entity=<entity>/`.
 11. The manifest is copied to its final key **last**. A final manifest is the
     completion marker for readers that check it before querying.
 12. Staging objects are deleted on a best-effort basis; the lifecycle rule is
@@ -72,7 +72,7 @@ progress or after a failed rollback. Query a partition only after its final
   exists without a manifest (a partial previous run).
 - `OVERWRITE=replace` republishes, force-removes a stale claim, and cleans
   stale keys before publishing.
-- Publication is serialized per `region`/`ymd` partition by the conditional-
+- Publication is serialized per `region`/date partition by the conditional-
   write claim (`_lock.json`); a run that loses the race fails fast with exit
   code 4 and leaves the winner's output untouched. The claim is released when
   the run finishes, so it is not a lease: a holder killed without cleanup
@@ -112,7 +112,8 @@ SIGTERM handlers allow the process to stop cooperatively and be retried.
   output, index and temporary row groups.
 - Default Fargate sizing is 2 vCPU / 8192 MiB. Larger extracts benefit from
   more vCPU and memory; Fargate only accepts specific vCPU/memory combinations.
-- Glue/Athena performance depends on partition pruning (`region`, `ymd`) and
+- Glue/Athena performance depends on partition pruning (`region`, `year`,
+  `month`, `day`) and
   Parquet column pruning. `athena_bytes_scanned_cutoff` can cap runaway
   queries.
 
@@ -150,7 +151,7 @@ endpoint association to include it.
 - Batch execution role: pull the project ECR image and write to the Batch log group.
 - Batch service role: AWS managed `AWSBatchServiceRole`.
 - Glue Data Catalog table: explicit dataset schema and projected
-  `region`/`ymd`/`entity` locations. No crawler role or crawler is required.
+  `region`/`year`/`month`/`day`/`entity` locations. No crawler role or crawler is required.
 - EC2 instance role/profile exists for optional EC2 compute mode.
 - S3 buckets block public access and deny non-TLS requests.
 - No secrets are placed in environment variables; workloads use IAM roles.

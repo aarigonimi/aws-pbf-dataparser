@@ -42,7 +42,7 @@ wall-clock duration alone.
   (`curated_noncurrent_version_days`).
 - Keep the ECR lifecycle policy; avoid unbounded tagged images.
 - Use `OVERWRITE=skip` in retries so completed partitions do not reprocess.
-- Use partition pruning (`region`, `ymd`) in Athena and set
+- Use partition pruning (`region`, `year`, `month`, `day`) in Athena and set
   `athena_bytes_scanned_cutoff`.
 - For large, interruption-tolerant batches, use EC2 Spot
   (`batch_compute_type = EC2`, `batch_use_spot = true`) and configure

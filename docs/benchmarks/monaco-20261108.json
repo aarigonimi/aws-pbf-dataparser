@@ -5,12 +5,13 @@
   "status": "success",
   "purpose": "Tutorial-scale end-to-end validation run: deploy, submit, monitor and query the current repository code in AWS. This is not a throughput benchmark; see scale_note.",
   "provenance": {
-    "manifest": "s3://<curated-bucket>/curated/region=monaco/ymd=20261108/_manifest.json",
+    "manifest": "s3://<curated-bucket>/curated/region=monaco/2026/11/08/_manifest.json",
     "aws_batch_values": "read from the live AWS account (describe-jobs, logs tail, athena start-query-execution)",
-    "executed_by": "repository tutorial (README steps 5-6) on 2026-11-09 local / 2026-11-10 UTC"
+    "executed_by": "repository tutorial (README steps 5-6) on 2026-11-09 local / 2026-11-10 UTC",
+    "layout_migration": "S3 objects were relocated from region=monaco/ymd=20261108/ to region=monaco/2026/11/08/ on 2026-11-10; the run itself wrote the old layout. The manifest object's embedded output.prefix still records the prefix at run time."
   },
   "input": {
-    "s3_uri": "s3://<raw-bucket>/region=monaco/ymd=20261108/monaco-20261108.osm.pbf",
+    "s3_uri": "s3://<raw-bucket>/region=monaco/2026/11/08/monaco-20261108.osm.pbf",
     "bytes": 707417,
     "source": "Geofabrik monaco extract, monaco-261108.osm.pbf via monaco-latest.osm.pbf redirect",
     "size_mb_decimal": 0.707417
@@ -41,7 +42,7 @@
     "image_note": "built from repository commit cd55ee56e2e5b19938b4927eeab199b9f9cbd819, pushed by scripts/docker_build_push.sh and pinned by digest in the job definition"
   },
   "output": {
-    "s3_prefix": "s3://<curated-bucket>/curated/region=monaco/ymd=20261108/",
+    "s3_prefix": "s3://<curated-bucket>/curated/region=monaco/2026/11/08/",
     "parquet_files": 3,
     "files_by_entity": {
       "nodes": 1,
@@ -63,7 +64,7 @@
     },
     "entity_counts_match_manifest": true,
     "athena_query_execution_state": "SUCCEEDED",
-    "athena_sample_row_query": "SELECT osm_id, name, highway FROM osm_curated WHERE region='monaco' AND ymd='20261108' AND entity='ways' AND highway IS NOT NULL LIMIT 5 returned named Monaco streets (e.g. 'Avenue Princesse Alice')",
+    "athena_sample_row_query": "SELECT osm_id, name, highway FROM osm_curated WHERE region='monaco' AND year='2026' AND month='11' AND day='08' AND entity='ways' AND highway IS NOT NULL LIMIT 5 returned named Monaco streets (e.g. 'Avenue Princesse Alice')",
     "validate_output_script": "scripts/validate_output.sh passed; manifest record_counts equal processor_counts",
     "overwrite_semantics_verified_in_aws": {
       "error": "second submission with OVERWRITE=error failed fast with OutputConflictError, container exit code 4, one attempt",

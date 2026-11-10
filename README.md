@@ -184,7 +184,7 @@ The key variables (all defaults shown; full list with validations in
 
 The OSM input is configured at submission time (Step 5) through
 `REGION_NAME`, `YMD` and `RAW_KEY`; the pipeline derives the input key from
-the `region=<region>/ymd=<YYYYMMDD>/<region>-<YYYYMMDD>.osm.pbf` layout when
+the `region=<region>/<yyyy>/<mm>/<dd>/<region>-<YYYYMMDD>.osm.pbf` layout when
 `RAW_KEY` is not set. All runtime options and their defaults are documented
 in [src/config.py](src/config.py) and [`.env.example`](.env.example) (a
 credential-free template for local runs).
@@ -288,7 +288,7 @@ export RAW_BUCKET="$(terraform -chdir=infrastructure output -raw raw_bucket_name
 export OUTPUT_BUCKET="$(terraform -chdir=infrastructure output -raw curated_bucket_name)"
 export OUTPUT_PREFIX="curated"
 aws s3 cp "monaco-${YMD}.osm.pbf" \
-  "s3://${RAW_BUCKET}/region=${REGION_NAME}/ymd=${YMD}/${REGION_NAME}-${YMD}.osm.pbf"
+  "s3://${RAW_BUCKET}/region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/${REGION_NAME}-${YMD}.osm.pbf"
 ```
 
 Submit the job:
@@ -327,7 +327,7 @@ aws logs tail /aws/batch/osm-pbf-data-lake --region "$AWS_REGION" --follow --sin
 ```
 
 A successful log ends with `Run complete: status=success records={...}
-files=... manifest=s3://<curated-bucket>/curated/region=monaco/ymd=<YMD>/_manifest.json`.
+files=... manifest=s3://<curated-bucket>/curated/region=monaco/2026/11/08/_manifest.json`.
 
 This tutorial run is deliberately small. The full-scale Quebec benchmark
 (148.7 M entities, 6.45 GB Parquet, ~1 h 40 m end to end) is documented in
@@ -347,8 +347,8 @@ It lists the partition objects, counts Parquet files, sums bytes and prints
 the manifest. Inspect the final state manually:
 
 ```bash
-aws s3 ls "s3://${OUTPUT_BUCKET}/${OUTPUT_PREFIX}/region=${REGION_NAME}/ymd=${YMD}/" --recursive
-aws s3 cp "s3://${OUTPUT_BUCKET}/${OUTPUT_PREFIX}/region=${REGION_NAME}/ymd=${YMD}/_manifest.json" -
+aws s3 ls "s3://${OUTPUT_BUCKET}/${OUTPUT_PREFIX}/region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/" --recursive
+aws s3 cp "s3://${OUTPUT_BUCKET}/${OUTPUT_PREFIX}/region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/_manifest.json" -
 ```
 
 Check `status`, `record_counts`, `total_records`, `files`, `source` and
@@ -371,7 +371,7 @@ Query the data with Athena from the CLI (equivalent to the console example in
 export ATHENA_WORKGROUP="$(terraform -chdir=infrastructure output -raw athena_workgroup_name)"
 export GLUE_DATABASE="$(terraform -chdir=infrastructure output -raw glue_database_name)"
 QUERY_ID="$(aws athena start-query-execution --region "$AWS_REGION" \
-  --query-string "SELECT entity, count(*) AS records FROM osm_curated WHERE region = '${REGION_NAME}' AND ymd = '${YMD}' GROUP BY entity ORDER BY entity" \
+  --query-string "SELECT entity, count(*) AS records FROM osm_curated WHERE region = '${REGION_NAME}' AND year = '${YMD:0:4}' AND month = '${YMD:4:2}' AND day = '${YMD:6:2}' GROUP BY entity ORDER BY entity" \
   --query-execution-context "Database=${GLUE_DATABASE}" \
   --result-configuration "OutputLocation=s3://${OUTPUT_BUCKET}/athena-results/" \
   --work-group "$ATHENA_WORKGROUP" \
@@ -388,7 +388,7 @@ aws athena get-query-results --region "$AWS_REGION" \
 one count per entity (`nodes`, `ways`, `relations`) that exactly matches
 `record_counts` in the S3 manifest; `describe-jobs` shows `SUCCEEDED`; and the
 log ends with `Run complete`. Partition projection requires equality filters
-on both `region` and `ymd` — without them the query fails or scans
+on `region`, `year`, `month` and `day` — without them the query fails or scans
 everything. **Query only after `_manifest.json` exists**; the manifest is the
 completion marker and Athena does not gate on it.
 
@@ -396,8 +396,8 @@ completion marker and Athena does not gate on it.
 or bucket is wrong (check `RAW_KEY`); exit code 4 means the partition or claim
 already exists (see overwrite modes); exit code 5 means an IAM denial (see
 [troubleshooting](docs/troubleshooting.md#s3-access-denied)); empty Athena
-rows usually mean `region`/`ymd` filters do not match the published
-partition. [Validation details](docs/validation.md).
+rows usually mean `region`/`year`/`month`/`day` filters do not match the
+published partition. [Validation details](docs/validation.md).
 
 ### Step 7 — Troubleshooting
 
@@ -411,7 +411,7 @@ diagnosis and fix:
 | `AccessDenied` in logs, exit code 5 | Job/execution role confusion, wrong bucket/prefix in policy, or an SCP | [IAM and S3](docs/troubleshooting.md#s3-access-denied) |
 | Exit code 4 on resubmission | Partition manifest, stray output, or another run's `_lock.json` claim exists | [Output conflict](docs/troubleshooting.md#output-conflict) |
 | Two jobs, one partition | Pre-claim behavior; publication is now serialized by the S3 claim, losers fail fast | [Concurrent processing](docs/troubleshooting.md#two-jobs-published-the-same-partition) |
-| Athena cannot see rows | Missing injected `region`/`ymd` equality filters, or querying before the manifest exists | [Athena projection](docs/troubleshooting.md#athena-cannot-resolve-projected-partitions) |
+| Athena cannot see rows | Missing injected `region`/`year`/`month`/`day` equality filters, or querying before the manifest exists | [Athena projection](docs/troubleshooting.md#athena-cannot-resolve-projected-partitions) |
 | Retried non-retryable failures | Retry rules must end with a catch-all `EXIT`; see the job definition | [Retry behavior](docs/troubleshooting.md#batch-retry-behavior) |
 | Docker build/push failures | Architecture must be `linux/amd64`; tag must exist and match `image_tag` | [Image build](docs/deployment.md#build-and-push-the-image) |
 | Terraform drift or stale plans | Live state vs configuration; never apply stale plans | [Terraform recovery](docs/TERRAFORM_RECOVERY.md) |
@@ -471,7 +471,7 @@ and backups are not cleanup targets; preserve them per your recovery policy.
 ## Output contract
 
 ```text
-s3://<curated-bucket>/curated/region=<region>/ymd=<YYYYMMDD>/
+s3://<curated-bucket>/curated/region=<region>/<yyyy>/<mm>/<dd>/
   entity=nodes/part-00000.parquet
   entity=ways/part-00000.parquet
   entity=relations/part-00000.parquet
@@ -479,7 +479,8 @@ s3://<curated-bucket>/curated/region=<region>/ymd=<YYYYMMDD>/
 ```
 
 Each entity file uses the shared explicit schema in [docs/SCHEMA.md](docs/SCHEMA.md).
-The directory layout provides Hive-style `region`, `ymd` and `entity` values.
+The directory layout provides Hive-style `region` and `entity` values plus a
+zero-padded `yyyy/mm/dd` date path.
 Tags are canonical JSON strings; relation members are JSON strings in an array;
 geometry is WKT text. Way geometry is optional. Relation geometry is not
 reconstructed. Empty entity outputs have no Parquet file but are represented
@@ -495,7 +496,7 @@ partial data while final keys are being copied.
 
 `OVERWRITE=error` protects an existing partition; `skip` treats a manifest as
 completion; `replace` republishes and removes stale keys before publishing.
-Publication is serialized per `region`/`ymd` partition by an S3
+Publication is serialized per `region`/date partition by an S3
 conditional-write claim (`_lock.json`): a second concurrent run fails fast
 with exit code 4 instead of interleaving its copies. The claim is released
 when the run finishes; a stale claim from a terminated run is recovered with
@@ -571,7 +572,8 @@ remaining publication and live-verification steps.
 The S3 gateway endpoint is associated with the VPC main route table; custom
 subnets may need explicit endpoint routing. Batch egress is open by default.
 Glue partition projection is configured for `osm_curated`: queries must filter
-on `region` and `ymd`, while `entity` is projected from its three-value enum.
+on `region`, `year`, `month` and `day`, while `entity` is projected from its
+three-value enum.
 This table replaced the retired Glue crawler and was deployed and queried via
 Athena during the 2026-11-10 Monaco tutorial validation above. The project
 processes full snapshots; it does not apply OSM

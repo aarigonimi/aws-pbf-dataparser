@@ -28,7 +28,7 @@ retries any failure that matches no rule, which would re-run configuration
 ## Two jobs published the same partition
 
 Publication is serialized per partition with an S3 conditional-write claim:
-before doing any work a run writes `region=<region>/ymd=<ymd>/_lock.json`
+before doing any work a run writes `region=<region>/<yyyy>/<mm>/<dd>/_lock.json`
 with `If-None-Match: *`, and only one concurrent run can acquire it. The
 losing runs fail fast with exit code 4 (`OutputConflictError`) and leave
 the winner's output untouched. This replaced the pre-claim behavior where
@@ -73,8 +73,9 @@ stale claim from a terminated run — confirm no run is active first.
 ## Athena cannot resolve projected partitions
 
 The Terraform-defined `osm_curated` table uses injected partition projection
-for `region` and `ymd`. Every query must include equality predicates for both,
-for example `WHERE region = 'quebec' AND ymd = '20261108'`. Check the Glue table
+for `region`, `year`, `month` and `day`. Every query must include equality
+predicates for all four (zero-padded `month`/`day` strings),
+for example `WHERE region = 'quebec' AND year = '2026' AND month = '11' AND day = '08'`. Check the Glue table
 parameters, its S3 location template, and that the query uses the configured
 database. This table was deployed and its Athena counts matched the manifest
 for both the historical Quebec partition and the 2026-11-10 Monaco tutorial

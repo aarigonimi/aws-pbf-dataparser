@@ -8,7 +8,7 @@ export OUTPUT_BUCKET="$(terraform -chdir=infrastructure output -raw curated_buck
 export REGION_NAME="monaco"
 export YMD="20261108"
 export OUTPUT_PREFIX="curated"
-export PARTITION_PREFIX="${OUTPUT_PREFIX}/region=${REGION_NAME}/ymd=${YMD}/"
+export PARTITION_PREFIX="${OUTPUT_PREFIX}/region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/"
 ```
 
 ## S3 inventory and manifest
@@ -52,11 +52,12 @@ GLUE_DATABASE="$(terraform -chdir=infrastructure output -raw glue_database_name)
 ```
 
 The `osm_curated` table is declared in Terraform with the explicit Parquet
-schema and partition projection. Its `region` and `ymd` partitions use the
-`injected` projection type, so every query must supply equality filters for
-both. `entity` is projected from `nodes,ways,relations`. The table was deployed
-on 2026-11-10 and its Athena entity counts matched the manifest in the Monaco
-tutorial run ([benchmarks](benchmarks/README.md)).
+schema and partition projection. Its `region`, `year`, `month` and `day`
+partitions use the `injected` projection type, so every query must supply
+equality filters for all four (`month` and `day` are zero-padded two-digit
+strings). `entity` is projected from `nodes,ways,relations`. The table was
+deployed on 2026-11-10 and its Athena entity counts matched the manifest in
+the Monaco tutorial run ([benchmarks](benchmarks/README.md)).
 
 Confirm the table exists and exposes the expected columns and partition keys:
 
@@ -74,17 +75,17 @@ SHOW TABLES IN osm_catalog;
 
 SELECT entity, count(*) AS records
 FROM osm_curated
-WHERE region = 'monaco' AND ymd = '20261108'
+WHERE region = 'monaco' AND year = '2026' AND month = '11' AND day = '08'
 GROUP BY entity;
 
 SELECT osm_type, count(*) AS entities
 FROM osm_curated
-WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'ways'
+WHERE region = 'monaco' AND year = '2026' AND month = '11' AND day = '08' AND entity = 'ways'
 GROUP BY osm_type;
 
 SELECT osm_id, name, highway, tags
 FROM osm_curated
-WHERE region = 'monaco' AND ymd = '20261108' AND entity = 'ways'
+WHERE region = 'monaco' AND year = '2026' AND month = '11' AND day = '08' AND entity = 'ways'
 LIMIT 10;
 ```
 
@@ -93,7 +94,7 @@ encryption and scan cutoff):
 
 ```bash
 QUERY_ID="$(aws athena start-query-execution --region "$AWS_REGION" \
-  --query-string "SELECT entity, count(*) AS records FROM osm_curated WHERE region = '${REGION_NAME}' AND ymd = '${YMD}' GROUP BY entity ORDER BY entity" \
+  --query-string "SELECT entity, count(*) AS records FROM osm_curated WHERE region = '${REGION_NAME}' AND year = '${YMD:0:4}' AND month = '${YMD:4:2}' AND day = '${YMD:6:2}' GROUP BY entity ORDER BY entity" \
   --query-execution-context "Database=${GLUE_DATABASE}" \
   --result-configuration "OutputLocation=s3://${OUTPUT_BUCKET}/athena-results/" \
   --work-group "$ATHENA_WORKGROUP" \
@@ -109,4 +110,5 @@ aws athena get-query-results --region "$AWS_REGION" \
 Compare the three counts with `record_counts` in the S3 manifest. Check Athena
 query execution details for state, bytes scanned and engine time. Use the
 configured workgroup so its result location and scan cutoff apply. Always
-include both injected partition predicates to constrain projection and scans.
+include all four injected partition predicates (`region`, `year`, `month`,
+`day`) to constrain projection and scans.

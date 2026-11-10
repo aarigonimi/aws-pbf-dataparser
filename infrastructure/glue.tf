@@ -14,10 +14,12 @@ resource "aws_glue_catalog_table" "osm_curated" {
     "classification"            = "parquet"
     "projection.enabled"        = "true"
     "projection.region.type"    = "injected"
-    "projection.ymd.type"       = "injected"
+    "projection.year.type"      = "injected"
+    "projection.month.type"     = "injected"
+    "projection.day.type"       = "injected"
     "projection.entity.type"    = "enum"
     "projection.entity.values"  = "nodes,ways,relations"
-    "storage.location.template" = "s3://${aws_s3_bucket.curated.bucket}/${var.output_prefix}/region=$${region}/ymd=$${ymd}/entity=$${entity}/"
+    "storage.location.template" = "s3://${aws_s3_bucket.curated.bucket}/${var.output_prefix}/region=$${region}/$${year}/$${month}/$${day}/entity=$${entity}/"
   }
 
   storage_descriptor {
@@ -105,7 +107,15 @@ resource "aws_glue_catalog_table" "osm_curated" {
     type = "string"
   }
   partition_keys {
-    name = "ymd"
+    name = "year"
+    type = "string"
+  }
+  partition_keys {
+    name = "month"
+    type = "string"
+  }
+  partition_keys {
+    name = "day"
     type = "string"
   }
   partition_keys {

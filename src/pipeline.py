@@ -159,7 +159,7 @@ def run_pipeline(
     """Execute one PBF -> Parquet run and publish it to S3.
 
     Publication is serialised per output partition with a conditional-write
-    claim object, so concurrent runs of the same ``region``/``ymd`` fail fast
+    claim object, so concurrent runs of the same ``region``/date fail fast
     with an :class:`OutputConflictError` instead of interleaving their
     copies. The claim is released when the run finishes, and stale objects
     are removed before new data is published so a failed run never leaves a

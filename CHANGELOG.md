@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Change the S3 partition layout from `region=<region>/ymd=<YYYYMMDD>/` to
+  `region=<region>/<yyyy>/<mm>/<dd>/`: pipeline output keys, the lock and
+  manifest paths, raw-input key derivation (legacy `ymd=` keys still parse),
+  `submit_job.sh`/`validate_output.sh` path construction, and the Glue table
+  partition keys (`region`, `year`, `month`, `day`, `entity`, all injected
+  except the entity enum). Existing S3 data was relocated with `aws s3 mv` on
+  2026-11-10; historical manifests still record their run-time prefix.
 - Fix the Fargate Batch compute environment: the Batch API requires
   `securityGroupIds` for FARGATE compute environments, so CE creation failed
   with `ClientException: Security group ids are required`; add a dedicated

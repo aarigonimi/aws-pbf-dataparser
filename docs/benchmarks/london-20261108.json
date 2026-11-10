@@ -3,14 +3,15 @@
   "region": "london",
   "extract_date": "2026-11-08",
   "status": "success",
-  "writer_note": "This historical run used the older writer, which rotated at 300000 rows. Current repository code rotates at 250000 rows and has not been run in AWS.",
+  "writer_note": "This historical run used the older writer, which rotated at 300000 rows. Current repository code rotates at 250000 rows and was run in AWS for the Monaco tutorial validation, but no entity exceeded one file there, so the rotation threshold itself remains unexercised in AWS.",
   "discovery_note": "This benchmark was already present in AWS during the audit. No London job was submitted by this audit.",
   "provenance": {
-    "manifest": "s3://<curated-bucket>/curated/region=london/ymd=20261108/_manifest.json",
-    "values": "read from the existing S3 manifest and AWS Batch job history"
+    "manifest": "s3://<curated-bucket>/curated/region=london/2026/11/08/_manifest.json",
+    "values": "read from the existing S3 manifest and AWS Batch job history",
+    "layout_migration": "S3 objects were relocated from region=london/ymd=20261108/ to region=london/2026/11/08/ on 2026-11-10; the run itself wrote the old layout. The manifest object's embedded output.prefix still records the prefix at run time."
   },
   "input": {
-    "s3_uri": "s3://<raw-bucket>/region=london/ymd=20261108/london-20261108.osm.pbf",
+    "s3_uri": "s3://<raw-bucket>/region=london/2026/11/08/london-20261108.osm.pbf",
     "bytes": 130140824
   },
   "entities": {
@@ -36,7 +37,7 @@
     "attempt_timeout_seconds": 21600
   },
   "output": {
-    "s3_prefix": "s3://<curated-bucket>/curated/region=london/ymd=20261108/",
+    "s3_prefix": "s3://<curated-bucket>/curated/region=london/2026/11/08/",
     "parquet_files": 46,
     "files_by_entity": {
       "nodes": 37,
