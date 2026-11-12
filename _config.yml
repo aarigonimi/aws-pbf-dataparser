@@ -22,7 +22,7 @@ exclude:
   - README.md
   - SECURITY.md
   - Gemfile
-  - infrastructure
+  - infra
   - pyproject.toml
   - requirements-dev.txt
   - requirements.txt

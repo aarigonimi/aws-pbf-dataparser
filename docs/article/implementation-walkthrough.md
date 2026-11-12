@@ -98,7 +98,7 @@ flowchart LR
 | **Amazon Athena** | SQL validation and analytics | Serverless, pay per query, reads the Glue catalog | Redshift Spectrum, local DuckDB | Athena results land in S3 and need their own lifecycle rule. |
 | **CloudWatch Logs** | Application logs with run ID, timings and counts | Native `awslogs` driver on Batch | Firehose to S3 | Logs are text, so metrics are extracted by reading the log lines. |
 | **ECR** | Stores the job image | Same-region pulls through private endpoints | Docker Hub | Needs endpoints or internet egress, which is exactly what failed first (§7). |
-| **Terraform** | Everything above, as code | Reviewable plans, reproducible stacks | CDK, CloudFormation | Local state by default; a remote backend example is provided (`infrastructure/backend.tf.example`). |
+| **Terraform** | Everything above, as code | Reviewable plans, reproducible stacks | CDK, CloudFormation | Local state by default; a remote backend example is provided (`infra/backend.tf.example`). |
 
 Three design rules shape the code:
 
@@ -526,7 +526,7 @@ What each choice buys you:
 - **A non-root `app` user** and `COPY --chown=app:app src` follow least privilege inside the task.
 - **`PYTHONUNBUFFERED=1`** makes log lines reach CloudWatch immediately, which matters when a 90-minute job dies.
 - **`STOPSIGNAL SIGTERM` + `ENTRYPOINT ["python", "-m", "src.main"]`** (exec form) make Python PID 1, so it receives the SIGTERM that Batch sends on cancellation.
-- **`.dockerignore`** excludes `.git`, `docs/`, `tests/`, `scripts/`, `infrastructure/`, `*.osm.pbf`, `*.parquet`, `data/` and `output/`. A stray 1 GB extract in your working copy never gets sent to the build context.
+- **`.dockerignore`** excludes `.git`, `docs/`, `tests/`, `scripts/`, `infra/`, `*.osm.pbf`, `*.parquet`, `data/` and `output/`. A stray 1 GB extract in your working copy never gets sent to the build context.
 
 There are no command-line parameters. Everything is passed as environment variables, which is how Batch job overrides work.
 
@@ -545,7 +545,7 @@ At the time of writing, the Docker daemon was unavailable, so the image build an
 Terraform creates the repository (§5), so publishing happens after the first `apply`. `scripts/docker_build_push.sh` logs in, builds for `linux/amd64` with Buildx, pushes and prints the digest:
 
 ```bash
-export ECR_REPOSITORY_URL="$(terraform -chdir=infrastructure output -raw ecr_repository_url)"
+export ECR_REPOSITORY_URL="$(terraform -chdir=infra output -raw ecr_repository_url)"
 export AWS_REGION="us-east-1"
 export TAG="$(git rev-parse --short HEAD)"   # must equal image_tag in terraform.tfvars
 ./scripts/docker_build_push.sh
@@ -575,10 +575,10 @@ AWS Batch runs the image as follows. The job definition references `${repository
 
 ## 5. Provisioning AWS with Terraform
 
-All infrastructure lives in `infrastructure/`. It needs Terraform `>= 1.10.0`, the AWS provider `~> 5.0` and the random provider `~> 3.6`:
+All infrastructure lives in `infra/`. It needs Terraform `>= 1.10.0`, the AWS provider `~> 5.0` and the random provider `~> 3.6`:
 
 ```text
-infrastructure/
+infra/
   versions.tf  providers.tf  variables.tf  locals.tf  outputs.tf
   s3.tf        ecr.tf        iam.tf        batch.tf
   networking.tf  endpoints.tf  glue.tf     athena.tf
@@ -852,21 +852,21 @@ cd aws-pbf-dataparser
 
 aws sts get-caller-identity                     # confirm the account and identity first
 
-cp infrastructure/terraform.tfvars.example infrastructure/terraform.tfvars
+cp infra/terraform.tfvars.example infra/terraform.tfvars
 # edit: aws_region, image_tag (e.g. a git SHA), ecr_image_tag_mutability = "IMMUTABLE", sizes
 
-terraform -chdir=infrastructure init
-terraform -chdir=infrastructure fmt -check -recursive
-terraform -chdir=infrastructure validate
-terraform -chdir=infrastructure plan -out=tfplan.new
-terraform -chdir=infrastructure show tfplan.new   # read every resource before applying
-terraform -chdir=infrastructure apply tfplan.new
-terraform -chdir=infrastructure output
+terraform -chdir=infra init
+terraform -chdir=infra fmt -check -recursive
+terraform -chdir=infra validate
+terraform -chdir=infra plan -out=tfplan.new
+terraform -chdir=infra show tfplan.new   # read every resource before applying
+terraform -chdir=infra apply tfplan.new
+terraform -chdir=infra output
 ```
 
 Then build and push the image with the **same** tag (§4). The job definition can reference a tag that does not exist yet. A job submitted before the push will fail with an image-pull `ResourceInitializationError`.
 
-`terraform.tfvars`, `*.tfstate*`, `*.tfplan` and `.terraform/` are in `.gitignore`. Local state contains bucket names, ARNs and role IDs. For a team, start from `infrastructure/backend.tf.example`, an S3 backend with encryption and lockfile.
+`terraform.tfvars`, `*.tfstate*`, `*.tfplan` and `.terraform/` are in `.gitignore`. Local state contains bucket names, ARNs and role IDs. For a team, start from `infra/backend.tf.example`, an S3 backend with encryption and lockfile.
 
 The outputs you will use next are `raw_bucket_name`, `curated_bucket_name`, `batch_job_queue_name`, `batch_job_definition_name`, `ecr_repository_url`, `glue_database_name`, `glue_table_name`, `athena_workgroup_name` and `cloudwatch_log_group_name`.
 
@@ -882,10 +882,10 @@ The raw key layout is a contract shared by the job role policy (`region=*`), the
 
 ```bash
 export AWS_REGION="us-east-1"
-export RAW_BUCKET="$(terraform -chdir=infrastructure output -raw raw_bucket_name)"
-export OUTPUT_BUCKET="$(terraform -chdir=infrastructure output -raw curated_bucket_name)"
-export JOB_QUEUE="$(terraform -chdir=infrastructure output -raw batch_job_queue_name)"
-export JOB_DEFINITION="$(terraform -chdir=infrastructure output -raw batch_job_definition_name)"
+export RAW_BUCKET="$(terraform -chdir=infra output -raw raw_bucket_name)"
+export OUTPUT_BUCKET="$(terraform -chdir=infra output -raw curated_bucket_name)"
+export JOB_QUEUE="$(terraform -chdir=infra output -raw batch_job_queue_name)"
+export JOB_DEFINITION="$(terraform -chdir=infra output -raw batch_job_definition_name)"
 
 export REGION_NAME="monaco"           # start small; Quebec took about 1 h 39 min end to end
 export YMD="20261108"                 # the extract's date (YYYYMMDD), also the output partition
@@ -1009,7 +1009,7 @@ failed, Post "https://api.ecr.us-east-1.amazonaws.com/": dial tcp 44.213.79.10:4
 3. **Which path?** The target is a *public* IP (`44.213.79.10`), i.e. the public ECR API endpoint. The second attempt failed the same way against `44.213.78.216`.
 4. **Why no path?** The subnet is a default-VPC subnet with `MapPublicIpOnLaunch=True`. Its route table sends `0.0.0.0/0` to an internet gateway. But the job definition has **no `networkConfiguration`** (`describe-job-definitions` returns `null` for revision 9), so Fargate's `assignPublicIp` defaults to `DISABLED`. A task ENI without a public IP cannot use an internet gateway, and there was no NAT gateway. So every call to a public AWS endpoint timed out: ECR API, ECR registry, CloudWatch Logs and S3.
 
-**The fix** was to give the task private paths to every AWS service it needs before and during startup (`infrastructure/endpoints.tf`, §5.4):
+**The fix** was to give the task private paths to every AWS service it needs before and during startup (`infra/endpoints.tf`, §5.4):
 
 | Endpoint | Type | Needed for |
 | --- | --- | --- |
@@ -1098,7 +1098,7 @@ The table uses Parquet input/output formats and the `ParquetHiveSerDe`. Its proj
 
 `storage.location.template` points to `s3://<curated>/<output_prefix>/region=$${region}/$${year}/$${month}/$${day}/entity=$${entity}/`. Injected values avoid maintaining a region or date catalog list; the enum bounds the entity partition to the three directories the writer creates. Since region and date parts are injected, queries must provide equality filters for all four (`month` and `day` as zero-padded two-digit strings).
 
-The table is declared by `infrastructure/glue.tf`; there is no crawler to run. **This replacement was deployed on 2026-11-10, replacing the retired crawler stack, and was queried via Athena in the Monaco tutorial validation; the historical Quebec query also returned manifest-matching counts through the projected table.** The existing historical Glue crawler observations below describe the previous setup, not the new table. The manifest is not a catalog gate: query only after `_manifest.json` exists, and compare Athena results with it.
+The table is declared by `infra/glue.tf`; there is no crawler to run. **This replacement was deployed on 2026-11-10, replacing the retired crawler stack, and was queried via Athena in the Monaco tutorial validation; the historical Quebec query also returned manifest-matching counts through the projected table.** The existing historical Glue crawler observations below describe the previous setup, not the new table. The manifest is not a catalog gate: query only after `_manifest.json` exists, and compare Athena results with it.
 
 Use the Terraform database/table outputs and the SQL in `sql/athena/validate_entity_counts.sql`. The multi-region validation query is shown in §9. The explicit schema lets one query cover all three entity directories.
 
@@ -1106,7 +1106,7 @@ Use the Terraform database/table outputs and the SQL in `sql/athena/validate_ent
 
 ## 9. Querying and verifying with Amazon Athena
 
-Terraform creates the workgroup `osm-pbf-workgroup` with `enforce_workgroup_configuration = true`. The resource is in `infrastructure/athena.tf`:
+Terraform creates the workgroup `osm-pbf-workgroup` with `enforce_workgroup_configuration = true`. The resource is in `infra/athena.tf`:
 
 ```hcl
 resource "aws_athena_workgroup" "osm_workgroup" {
@@ -1160,7 +1160,7 @@ aws s3 cp "s3://${OUTPUT_BUCKET}/curated/region=${REGION_NAME}/${YMD:0:4}/${YMD:
   | python3 -c 'import json,sys; m=json.load(sys.stdin); print(m["status"], m["record_counts"], m["total_records"])'
 
 # Athena side
-ATHENA_WORKGROUP="$(terraform -chdir=infrastructure output -raw athena_workgroup_name)"
+ATHENA_WORKGROUP="$(terraform -chdir=infra output -raw athena_workgroup_name)"
 QID=$(aws athena start-query-execution --work-group "$ATHENA_WORKGROUP" \
   --query-string "$(cat sql/athena/validate_entity_counts.sql)" \
   --query-execution-context Database=osm_catalog \
@@ -1263,9 +1263,7 @@ These are calculated from the numbers above, not measured directly:
 | Output / input size | ≈ 5.5× | 6,454,025,948 / 1,166,570,375 |
 | Average Parquet file | ≈ 13.0 MB | 6,454,025,948 / 497 |
 
-For a sense of scale only: a later London run in the same account (`london-20261109142209`, also verified from its manifest) processed 13,346,901 entities in 549.270 parse seconds, about 24,299.3 entities/s (`13,346,901 / 549.270`). It produced 46 files totaling 588,845,591 bytes. Two runs of different sizes landing within roughly 10 % of each other suggests per-entity work dominates. It is not a scaling study.
-
-Both historical runs used the older writer, which rotated at 300,000 rows.
+The historical Quebec run used the older writer, which rotated at 300,000 rows.
 The current code rotates at 250,000 rows and was run in AWS for the Monaco
 tutorial validation on 2026-11-10; each Monaco entity fit in a single file, so
 the rotation threshold itself remains unexercised in AWS.
@@ -1382,7 +1380,7 @@ aws batch describe-compute-environments --query 'computeEnvironments[?starts_wit
 2. Run a vCPU/memory sizing sweep and `zstd` vs `snappy` comparison on the same extract; capture peak CPU/memory and Cost Explorer data with the next clean run.
 3. GeoParquet output and relation multipolygon assembly.
 
-**Repository:** https://github.com/aarigonimi/aws-pbf-dataparser. It contains everything needed to reproduce this walkthrough: `src/`, `tests/`, `Dockerfile`, `infrastructure/`, `scripts/`, `sql/athena/`, and the benchmark records under `docs/benchmarks/`.
+**Repository:** https://github.com/aarigonimi/aws-pbf-dataparser. It contains everything needed to reproduce this walkthrough: `src/`, `tests/`, `Dockerfile`, `infra/`, `scripts/`, `sql/athena/`, and the benchmark records under `docs/benchmarks/`.
 
 *OpenStreetMap data © OpenStreetMap contributors, available under the Open Database License (ODbL).*
 

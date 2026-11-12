@@ -10,22 +10,28 @@ permalink: /docs/ARCHITECTURE/
 | Component | Responsibility |
 | --- | --- |
 | S3 raw bucket | Versioned source extracts under `region=<region>/<yyyy>/<mm>/<dd>/`, with lifecycle expiry |
+| S3 → EventBridge notification | Optional event source; emits `Object Created` for the raw bucket |
+| EventBridge rule and Batch target | Optional; submits one Batch job when a `.osm.pbf` lands in the raw bucket |
 | AWS Batch compute environment | Fargate (default) or EC2/Spot workers |
-| Batch job definition | Container image, vCPU/memory, env defaults, retries, timeout, log config |
+| Batch job definition | Container image, vCPU/memory, env defaults, trigger parameters, retries, timeout, log config |
 | Batch job queue | Schedules jobs onto the compute environment |
 | S3 curated bucket | Staging, final Parquet, manifests, Athena results |
 | Glue database + projected table | Explicit Parquet schema and partition projection for the curated prefix |
 | Athena workgroup | Query results location, encryption, optional scan cutoff |
 | CloudWatch Logs | One log group per stack, retention configured |
 | ECR | Container image repository with lifecycle cleanup |
-| IAM roles | Execution role, job role, Batch service role and optional EC2 instance role |
+| IAM roles | Execution role, job role, Batch service role, optional EventBridge submit role and optional EC2 instance role |
+| QuickSight (optional) | Not provisioned; can read the Athena views if configured separately |
 
 ## Data flow
 
 1. A caller uploads an extract to
    `s3://<raw>/region=<region>/<yyyy>/<mm>/<dd>/<file>.osm.pbf`.
-2. `scripts/submit_job.sh` submits the Batch job with container overrides for
-   the run (`RAW_KEY`, `RUN_ID`, `OUTPUT_BUCKET`, `OVERWRITE`, ...).
+2. Either the optional EventBridge rule submits the Batch job with the object
+   key as the `raw_key` job-definition parameter, or `scripts/submit_job.sh`
+   submits it with container environment overrides (`RAW_KEY`, `OVERWRITE`, ...).
+   Triggered jobs derive the region and date from the key; manual overrides
+   take precedence.
 3. The job claims the partition: a conditional write (`If-None-Match: *`) of
    `_lock.json` under the final partition prefix. Only one concurrent run can
    hold the claim; the others fail with exit code 4 before doing any work.
@@ -62,6 +68,32 @@ The manifest does not gate S3 or Athena visibility. Direct S3 listings and
 Athena queries can observe partial or mixed data while publication is in
 progress or after a failed rollback. Query a partition only after its final
 `_manifest.json` exists and validate its counts against that manifest.
+
+## Trigger contract
+
+- S3 EventBridge notifications are enabled on the raw bucket when
+  `s3_trigger_enabled = true` (default).
+- The rule matches `source = aws.s3`, `detail-type = Object Created`, the raw
+  bucket name and a key suffix of `.osm.pbf`.
+- EventBridge Batch targets cannot pass `containerOverrides`. The event job
+  definition exposes a `raw_key` parameter, and the container command expands
+  it with `Ref::raw_key`; the input transformer maps the S3 object key into
+  it. The target submits the job named `osm-event-extract` against the
+  latest revision of the event definition (revisionless ARN prefix), while
+  manual scripts keep using the stable manual definition.
+- The EventBridge submit role may call `batch:SubmitJob` on this queue and job
+  definition and `iam:PassRole` only for the Batch job and execution roles,
+  restricted to `batch.amazonaws.com`.
+- The application derives `REGION_NAME` from the `region=<name>` key segment
+  and `YMD` from the `yyyy/mm/dd` path. There is no fallback: a key that does
+  not match the layout fails with exit code 3 before any output is written.
+- Triggered jobs use the event job definition's baked `MODE`, compression and
+  `INCLUDE_WAY_GEOMETRY`; change Terraform and apply a new revision to change
+  those defaults. Manual submission can override them.
+- S3/EventBridge can deliver duplicate events. The baked `OVERWRITE` mode
+  (default `error`) and the per-partition claim make a duplicate safe:
+  completed output is not replaced, and a concurrent loser fails with exit
+  code 4.
 
 ## Why staging plus a manifest
 
@@ -102,8 +134,9 @@ SIGTERM handlers allow the process to stop cooperatively and be retried.
 - PyOsmium is streaming; only the current PBF block is held by the parser.
 - Parquet buffers are bounded by `ROW_GROUP_SIZE` and
   `MAX_RECORDS_PER_FILE`.
-- Way geometry is off by default. Enabling it builds a disk-backed
-  node-location index (`.osmium-index/`) during parsing and stores WKT
+- Way geometry is on by default (`include_way_geometry = true`). Enabling it
+  builds a disk-backed node-location index (`.osmium-index/`) during parsing
+  and stores WKT
   LINESTRINGs; the index is removed after the parse. This increases disk use
   and CPU while parsing.
 - Fargate ephemeral storage defaults to 100 GiB in Terraform. The container
@@ -131,25 +164,30 @@ SIGTERM handlers allow the process to stop cooperatively and be retried.
 | `ecr.tf` | Repository, scanning, encryption, lifecycle policy |
 | `iam.tf` | Roles, policies, attachments |
 | `batch.tf` | Log group, compute environment, queue, job definition |
+| `trigger.tf` | Optional S3 notification, EventBridge rule/target and submit role |
 | `glue.tf` | Catalog database and partition-projected `osm_curated` table |
 | `athena.tf` | Workgroup, results location, encryption, scan cutoff |
 | `outputs.tf` | Names/URIs consumed by scripts and docs |
 
 The stack uses the default VPC unless `vpc_id`/`subnet_ids` are supplied. It
-does not create VPCs, subnets or NAT gateways. For Fargate it creates ECR
-(`ecr.api`, `ecr.dkr`) and CloudWatch Logs interface endpoints plus an S3
-gateway endpoint, so tasks can pull images and read/write S3 without a NAT
-gateway in the default configuration. Fargate tasks are pinned to one subnet
-because the interface endpoints are created in that subnet. The S3 gateway
-endpoint is associated with the selected VPC's main route table; with custom
-subnets, confirm that their route table is the main route table or update the
-endpoint association to include it.
+does not create VPCs, subnets or NAT gateways. In the default
+`network_access = vpc_endpoints` mode it creates ECR (`ecr.api`, `ecr.dkr`)
+and CloudWatch Logs interface endpoints plus an S3 gateway endpoint, so tasks
+can pull images and read/write S3 without a NAT gateway. Fargate tasks are
+pinned to one subnet because the interface endpoints are created in that
+subnet. The S3 gateway endpoint is associated with every route table in the
+VPC, covering both the main table used by default subnets and any explicit
+associations. With
+`network_access = public_ip` no endpoints are created; each task gets a
+public IP and the subnet needs an internet route.
 
 ## Security boundaries
 
 - Batch job role: read raw and manage objects under the configured curated prefix.
 - Batch execution role: pull the project ECR image and write to the Batch log group.
 - Batch service role: AWS managed `AWSBatchServiceRole`.
+- EventBridge submit role: `batch:SubmitJob` on this queue/definition and
+  `iam:PassRole` for the Batch roles, only when passed to `batch.amazonaws.com`.
 - Glue Data Catalog table: explicit dataset schema and projected
   `region`/`year`/`month`/`day`/`entity` locations. No crawler role or crawler is required.
 - EC2 instance role/profile exists for optional EC2 compute mode.
@@ -160,9 +198,11 @@ endpoint association to include it.
 
 ## Extension points
 
-- Add an EventBridge Scheduler or Step Functions state machine to submit jobs
-  and query after the partition manifest appears.
+- Add EventBridge Scheduler or Step Functions to download the monthly Geofabrik
+  extract, upload it, and query after the partition manifest appears.
 - Add a compaction job to merge small part files per partition.
 - Add OSM diff (`.osc.gz`) application for incremental updates.
 - Reconstruct relation geometry from member ways if required.
 - Publish to a data catalog with column statistics and partition projection.
+- Connect QuickSight to the example real-estate views; it is not provisioned
+  by this stack.

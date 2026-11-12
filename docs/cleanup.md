@@ -55,8 +55,9 @@ aws ecr batch-delete-image --repository-name "$ECR_REPOSITORY" --region "$AWS_RE
   --image-ids "imageTag=$(git rev-parse HEAD)"
 ```
 
-Once the buckets and repository are empty, `terraform destroy` (through
-`./scripts/cleanup.sh`) removes the stack without forcing data loss.
+Once the buckets and repository are empty, `terraform destroy` (`make destroy`,
+or through `./scripts/cleanup.sh` for the guarded flow) removes the stack
+without forcing data loss.
 
 After infrastructure cleanup, review continuing charges and retained data:
 

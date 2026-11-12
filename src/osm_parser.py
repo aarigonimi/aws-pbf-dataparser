@@ -134,7 +134,7 @@ def process_pbf(
     pbf_path: str | os.PathLike[str],
     sinks: dict[str, Any],
     entity_types: Iterable[str],
-    include_way_geometry: bool = False,
+    include_way_geometry: bool = True,
     cancel_token: Any = None,
     index_dir: str | os.PathLike[str] | None = None,
 ) -> dict[str, int]:
@@ -189,7 +189,7 @@ def process_pbf(
 def iter_entities(
     pbf_path: str | os.PathLike[str],
     entity_types: Iterable[str] | None = None,
-    include_way_geometry: bool = False,
+    include_way_geometry: bool = True,
 ) -> list[dict[str, Any]]:
     """Convenience collector for tests and small files.
 

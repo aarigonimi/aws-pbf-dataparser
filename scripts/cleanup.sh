@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TERRAFORM_DIR="$PROJECT_ROOT/infrastructure"
+TERRAFORM_DIR="$PROJECT_ROOT/infra"
 
 echo "This destroys Terraform-managed infrastructure after the plan is reviewed."
 echo "It does not delete S3 objects, versions, delete markers or ECR images."

@@ -1,6 +1,6 @@
 flowchart LR
     subgraph Build["Build and deploy (operator workstation)"]
-        TF[Terraform<br/>infrastructure/*.tf]
+        TF[Terraform<br/>infra/*.tf]
         DOCKER[docker buildx<br/>scripts/docker_build_push.sh]
     end
 

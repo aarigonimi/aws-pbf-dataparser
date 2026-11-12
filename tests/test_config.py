@@ -1,6 +1,6 @@
 import pytest
 
-from src.config import JobConfig
+from src.config import JobConfig, env_for_raw_key
 from src.errors import ConfigError
 
 
@@ -46,12 +46,70 @@ def test_raw_partition_key_preserves_explicit_key():
     assert config.ymd == "20250101"
 
 
-def test_raw_partition_key_preserves_explicit_legacy_key():
-    env = _env(RAW_KEY="region=monaco/ymd=20250101/custom.osm.pbf")
+@pytest.mark.parametrize(
+    "raw_key",
+    [
+        "region=monaco/ymd=20250101/custom.osm.pbf",
+        "monaco/2025/01/01/custom.osm.pbf",
+        "region=monaco/2025/01/01/custom.zip",
+        "region=/2025/01/01/custom.osm.pbf",
+        "region=monaco/2025/01/custom.osm.pbf",
+    ],
+)
+def test_malformed_raw_key_raises_config_error(raw_key):
+    env = _env(RAW_KEY=raw_key)
     env.pop("YMD")
-    config = JobConfig.from_env(env)
+    env.pop("REGION_NAME")
 
-    assert config.ymd == "20250101"
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(env)
+
+
+def test_missing_region_name_raises_config_error_without_raw_key():
+    env = _env()
+    env.pop("REGION_NAME")
+
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(env)
+
+
+def test_missing_ymd_raises_config_error_without_raw_key():
+    env = _env()
+    env.pop("YMD")
+
+    with pytest.raises(ConfigError):
+        JobConfig.from_env(env)
+
+
+def test_way_geometry_defaults_to_enabled():
+    assert JobConfig.from_env(_env()).include_way_geometry is True
+
+
+def test_env_for_raw_key_decodes_and_derives_region_and_date():
+    base = {
+        "RAW_BUCKET": "raw-bucket",
+        "OUTPUT_BUCKET": "curated-bucket",
+        "MODE": "all",
+    }
+    encoded_key = "region=quebec/2026/11/08/quebec-20261108.osm.pbf"
+
+    env = env_for_raw_key("region=quebec%2F2026%2F11%2F08%2Fquebec-20261108.osm.pbf", base)
+
+    assert env["RAW_KEY"] == encoded_key
+    assert env["REGION_NAME"] == "quebec"
+    assert env["YMD"] == "20261108"
+    # The base environment is copied, not mutated.
+    assert base.get("RAW_KEY") is None
+    assert base.get("REGION_NAME") is None
+    assert base.get("YMD") is None
+    config = JobConfig.from_env(env)
+    assert config.region_name == "quebec"
+    assert config.ymd == "20261108"
+
+
+def test_env_for_raw_key_rejects_malformed_keys():
+    with pytest.raises(ConfigError):
+        env_for_raw_key("bucket-root/extract.osm.pbf", {})
 
 
 def test_explicit_ymd_overrides_raw_key():
@@ -60,6 +118,27 @@ def test_explicit_ymd_overrides_raw_key():
     )
 
     assert config.ymd == "20260301"
+
+
+def test_region_is_derived_from_raw_key_for_triggered_jobs():
+    env = _env(RAW_KEY="region=quebec/2026/11/08/quebec-20261108.osm.pbf")
+    env.pop("REGION_NAME")
+    env.pop("YMD")
+
+    config = JobConfig.from_env(env)
+
+    assert config.region_name == "quebec"
+    assert config.ymd == "20261108"
+    assert config.curated_prefix == "curated/region=quebec/2026/11/08"
+
+
+def test_explicit_region_name_overrides_raw_key_region():
+    env = _env(
+        RAW_KEY="region=quebec/2026/11/08/quebec-20261108.osm.pbf",
+        REGION_NAME="montreal",
+    )
+
+    assert JobConfig.from_env(env).region_name == "montreal"
 
 
 def test_output_and_staging_keys_are_deterministic():

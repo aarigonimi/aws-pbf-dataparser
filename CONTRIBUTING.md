@@ -11,7 +11,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements-dev.txt
 make check
-terraform -chdir=infrastructure validate
+terraform -chdir=infra validate
 ```
 
 The Terraform validation target initializes providers without a remote

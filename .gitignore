@@ -14,7 +14,7 @@ dist/
 !.env.example
 *.tfvars
 *.tfvars.json
-!infrastructure/terraform.tfvars.example
+!infra/terraform.tfvars.example
 
 # Local infrastructure state, plans, and provider working directory
 .terraform/
@@ -27,12 +27,15 @@ terraform.tfstate.backup
 crash.log
 crash.*.log
 *.log
-!infrastructure/.terraform.lock.hcl
+!infra/.terraform.lock.hcl
 
 # Local reports and sample outputs
 *.osm.pbf
 *.parquet
 output/
+local-output/
+local-output-docker/
+_drafts/
 .local/
 data/*.osm.pbf
 

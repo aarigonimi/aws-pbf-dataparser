@@ -20,17 +20,6 @@ variable "project_name" {
   }
 }
 
-variable "default_region" {
-  description = "Default logical OSM region baked into the Batch job definition."
-  type        = string
-  default     = "monaco"
-
-  validation {
-    condition     = can(regex("^[A-Za-z0-9._-]+$", var.default_region))
-    error_message = "default_region must contain only letters, digits, dot, underscore or dash."
-  }
-}
-
 variable "raw_bucket_name" {
   description = "Base name for the raw bucket; a random suffix is appended."
   type        = string
@@ -74,6 +63,17 @@ variable "subnet_ids" {
   description = "Optional subnet ids. Leave empty to use all subnets in the selected VPC."
   type        = list(string)
   default     = []
+}
+
+variable "network_access" {
+  description = "How Batch tasks reach AWS APIs: vpc_endpoints creates ECR/Logs interface endpoints and an S3 gateway endpoint; public_ip assigns tasks a public IP and creates no endpoints (requires a subnet with an internet route)."
+  type        = string
+  default     = "vpc_endpoints"
+
+  validation {
+    condition     = contains(["vpc_endpoints", "public_ip"], var.network_access)
+    error_message = "network_access must be vpc_endpoints or public_ip."
+  }
 }
 
 variable "batch_compute_type" {
@@ -263,6 +263,12 @@ variable "overwrite" {
   }
 }
 
+variable "s3_trigger_enabled" {
+  description = "Create the S3 -> EventBridge -> Batch trigger for new .osm.pbf objects under region=."
+  type        = bool
+  default     = true
+}
+
 variable "parquet_compression" {
   description = "Parquet compression codec."
   type        = string
@@ -277,7 +283,7 @@ variable "parquet_compression" {
 variable "include_way_geometry" {
   description = "Reconstruct WKT LINESTRING geometry for ways (uses a disk-backed node index)."
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "log_level" {
@@ -341,9 +347,14 @@ variable "athena_workgroup_name" {
 }
 
 variable "athena_bytes_scanned_cutoff" {
-  description = "Per-query bytes-scanned cutoff. 0 disables the cutoff."
+  description = "Per-query bytes-scanned cutoff for the Athena workgroup. 0 disables the cutoff."
   type        = number
-  default     = 0
+  default     = 10737418240
+
+  validation {
+    condition     = var.athena_bytes_scanned_cutoff >= 0
+    error_message = "athena_bytes_scanned_cutoff must be 0 (disabled) or a positive byte count."
+  }
 }
 
 variable "glue_database_name" {

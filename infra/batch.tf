@@ -5,13 +5,16 @@ resource "aws_cloudwatch_log_group" "batch" {
   tags = var.tags
 }
 
+moved {
+  from = aws_batch_job_definition.osm_job
+  to   = aws_batch_job_definition.osm_job["manual"]
+}
+
 resource "aws_batch_compute_environment" "osm_compute" {
   compute_environment_name = "${var.project_name}-compute"
   type                     = "MANAGED"
   state                    = "ENABLED"
 
-  # AWS guidance: Fargate compute environments must not use a customer
-  # managed service role; EC2 environments use the AWSBatchServiceRole.
   service_role = local.is_ec2 ? aws_iam_role.batch_service_role.arn : null
 
   compute_resources {
@@ -21,9 +24,7 @@ resource "aws_batch_compute_environment" "osm_compute" {
     min_vcpus     = local.is_fargate ? null : var.batch_min_vcpus
     desired_vcpus = local.is_fargate ? null : var.batch_desired_vcpus
 
-    subnets = local.subnet_ids
-    # The Batch API requires at least one security group id for FARGATE
-    # compute environments (Fargate does not support launch templates).
+    subnets            = local.subnet_ids
     security_group_ids = local.is_fargate ? [aws_security_group.batch_fargate[0].id] : [aws_security_group.batch[0].id]
 
     instance_type       = local.is_fargate ? null : var.batch_instance_types
@@ -54,41 +55,43 @@ resource "aws_batch_job_queue" "osm_queue" {
 }
 
 resource "aws_batch_job_definition" "osm_job" {
-  name                  = "${var.project_name}-job"
+  for_each = local.job_definitions
+
+  name                  = each.value.name
   type                  = "container"
   platform_capabilities = [local.is_fargate ? "FARGATE" : "EC2"]
 
   container_properties = jsonencode(local.container_properties)
 
+  parameters = {
+    raw_key = ""
+  }
+
   retry_strategy {
     attempts = var.batch_retry_attempts
 
     evaluate_on_exit {
-      on_exit_code = "75"
+      on_exit_code = "75" # 75: transient S3/network or SIGTERM
       action       = "RETRY"
     }
 
     evaluate_on_exit {
-      on_status_reason = "Host EC2*"
+      on_status_reason = "Host EC2*" # EC2 host reclaimed (EC2 mode)
       action           = "RETRY"
     }
 
-    # Image pull / registry auth failures happen before the container starts.
     evaluate_on_exit {
-      on_status_reason = "ResourceInitializationError*"
+      on_status_reason = "ResourceInitializationError*" # Image pull failed
       action           = "RETRY"
     }
 
-    # Authorization failures are deterministic and use AccessDeniedError (5).
     evaluate_on_exit {
-      on_exit_code = "5"
+      on_exit_code = "5" # 5: IAM denial, do not retry
       action       = "EXIT"
     }
 
-    # Without a final rule, Batch retries every unmatched failure, including
-    # the non-retryable config (2), input (3) and output-conflict (4) exits.
     evaluate_on_exit {
-      on_exit_code = "*"
+      on_exit_code = "*" # Unmatched exits: do not retry
       action       = "EXIT"
     }
   }

@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="620" viewBox="0 0 1180 620" font-family="Arial, Helvetica, sans-serif">
+  <defs>
+    <marker id="arrow-navy" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#232F3E"/>
+    </marker>
+    <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#879596"/>
+    </marker>
+  </defs>
+
+  <!-- background -->
+  <rect x="0" y="0" width="1180" height="620" fill="#FFFFFF"/>
+
+  <!-- ================= band 0: one-time build and deploy (faded, dashed) ================= -->
+  <text x="40" y="18" font-size="11" font-weight="bold" fill="#879596" letter-spacing="1">ONE-TIME BUILD AND DEPLOY</text>
+
+  <g stroke-dasharray="4 3">
+    <rect x="40" y="28" width="150" height="48" rx="4" fill="#FFFFFF" stroke="#879596" stroke-width="1.5"/>
+    <rect x="52" y="42" width="22" height="22" rx="3" fill="#879596"/>
+    <text x="84" y="49" font-size="12" font-weight="bold" fill="#232F3E">Terraform</text>
+    <text x="84" y="64" font-size="10" fill="#545B64">infra/*.tf — one stack</text>
+    <path d="M 16 47 h 5 M 22 41 v 12 M 26 43 v 8 M 30 45 v 6" stroke="#FFFFFF" stroke-width="1.6" fill="none"/>
+  </g>
+
+  <g stroke-dasharray="4 3">
+    <rect x="240" y="28" width="210" height="48" rx="4" fill="#FFFFFF" stroke="#879596" stroke-width="1.5"/>
+    <rect x="252" y="42" width="22" height="22" rx="3" fill="#879596"/>
+    <text x="284" y="49" font-size="12" font-weight="bold" fill="#232F3E">docker buildx</text>
+    <text x="284" y="64" font-size="10" fill="#545B64">scripts/docker_build_push.sh</text>
+    <path d="M 258 47 h 3 l 4 -4 v 11 l -4 -4 h -3 z" fill="#FFFFFF"/>
+  </g>
+
+  <line x1="190" y1="52" x2="232" y2="52" stroke="#879596" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-gray)"/>
+
+  <g stroke-dasharray="4 3">
+    <rect x="500" y="28" width="210" height="48" rx="4" fill="#FFFFFF" stroke="#ED7100" stroke-width="1.5"/>
+    <rect x="512" y="42" width="22" height="22" rx="3" fill="#ED7100"/>
+    <text x="544" y="49" font-size="12" font-weight="bold" fill="#232F3E">Amazon ECR</text>
+    <text x="544" y="64" font-size="10" fill="#545B64">osm-pbf-batch image (immutable tag)</text>
+    <rect x="517" y="47" width="12" height="12" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>
+    <line x1="517" y1="51" x2="529" y2="51" stroke="#FFFFFF" stroke-width="1.6"/>
+    <line x1="517" y1="55" x2="529" y2="55" stroke="#FFFFFF" stroke-width="1.6"/>
+  </g>
+
+  <!-- ECR image pull (dashed, faded) -->
+  <path d="M 605 76 C 605 120, 940 112, 940 146" fill="none" stroke="#879596" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-gray)"/>
+  <text x="660" y="112" font-size="10" fill="#879596">image pull via VPC endpoints</text>
+
+  <!-- ================= band 1: monthly snapshot flow ================= -->
+  <text x="40" y="140" font-size="11" font-weight="bold" fill="#545B64" letter-spacing="1">MONTHLY SNAPSHOT FLOW (1–7)</text>
+
+  <!-- Geofabrik extract (external source) -->
+  <rect x="40" y="150" width="170" height="64" rx="4" fill="#FFFFFF" stroke="#879596" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <rect x="52" y="164" width="22" height="22" rx="3" fill="#879596"/>
+  <circle cx="63" cy="175" r="8" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <line x1="55" y1="175" x2="71" y2="175" stroke="#FFFFFF" stroke-width="1.5"/>
+  <line x1="63" y1="167" x2="63" y2="183" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text x="84" y="171" font-size="12" font-weight="bold" fill="#232F3E">Geofabrik extract</text>
+  <text x="84" y="186" font-size="10" fill="#545B64">regional .osm.pbf (monthly)</text>
+  <text x="84" y="200" font-size="9" fill="#879596">© OpenStreetMap contributors</text>
+
+  <!-- 1 upload -->
+  <line x1="210" y1="182" x2="284" y2="182" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="247" cy="182" r="10" fill="#232F3E"/>
+  <text x="247" y="186" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">1</text>
+  <text x="247" y="168" font-size="10" fill="#545B64" text-anchor="middle">aws s3 cp</text>
+
+  <!-- S3 raw -->
+  <rect x="290" y="150" width="230" height="64" rx="4" fill="#FFFFFF" stroke="#7AA116" stroke-width="2"/>
+  <rect x="302" y="164" width="22" height="22" rx="3" fill="#7AA116"/>
+  <path d="M 306 168 l 3 12 h 14 l 3 -12 z M 307 170 h 16" stroke="#FFFFFF" stroke-width="1.5" fill="none"/>
+  <text x="334" y="171" font-size="12" font-weight="bold" fill="#232F3E">Amazon S3 — raw bucket</text>
+  <text x="334" y="186" font-size="10" fill="#545B64">region=quebec/2026/11/08/</text>
+  <text x="334" y="200" font-size="10" fill="#545B64">quebec-20261108.osm.pbf</text>
+
+  <!-- 2 Object Created event -->
+  <line x1="520" y1="182" x2="574" y2="182" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="547" cy="182" r="10" fill="#232F3E"/>
+  <text x="547" y="186" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">2</text>
+  <text x="547" y="168" font-size="10" fill="#545B64" text-anchor="middle">Object Created</text>
+
+  <!-- EventBridge -->
+  <rect x="580" y="150" width="210" height="64" rx="4" fill="#FFFFFF" stroke="#B0084D" stroke-width="2"/>
+  <rect x="592" y="164" width="22" height="22" rx="3" fill="#B0084D"/>
+  <path d="M 600 170 l 8 5 l -8 5 l 2 -5 z" fill="#FFFFFF"/>
+  <text x="624" y="171" font-size="12" font-weight="bold" fill="#232F3E">Amazon EventBridge</text>
+  <text x="624" y="186" font-size="10" fill="#545B64">rule: new .osm.pbf in raw bucket</text>
+  <text x="624" y="200" font-size="10" fill="#545B64">at-least-once delivery</text>
+
+  <!-- 3 SubmitJob -->
+  <line x1="790" y1="182" x2="844" y2="182" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="817" cy="182" r="10" fill="#232F3E"/>
+  <text x="817" y="186" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">3</text>
+  <text x="817" y="168" font-size="10" fill="#545B64" text-anchor="middle">SubmitJob (raw_key)</text>
+
+  <!-- Batch / Fargate -->
+  <rect x="850" y="150" width="290" height="96" rx="4" fill="#FFFFFF" stroke="#ED7100" stroke-width="2"/>
+  <rect x="862" y="160" width="22" height="22" rx="3" fill="#ED7100"/>
+  <rect x="865" y="163" width="16" height="4" fill="#FFFFFF"/>
+  <rect x="865" y="169" width="16" height="4" fill="#FFFFFF"/>
+  <rect x="865" y="175" width="16" height="4" fill="#FFFFFF"/>
+  <text x="894" y="167" font-size="12" font-weight="bold" fill="#232F3E">AWS Batch — Fargate task</text>
+  <text x="894" y="181" font-size="10" fill="#545B64">queue, retries, timeout — 2 vCPU / 8 GiB / 100 GiB</text>
+  <rect x="866" y="190" width="258" height="20" rx="2" fill="#FFF4E8"/>
+  <text x="995" y="204" font-size="10" fill="#232F3E" text-anchor="middle">PyOsmium SimpleHandler (streaming)</text>
+  <line x1="995" y1="210" x2="995" y2="220" stroke="#ED7100" stroke-width="1.5" marker-end="url(#arrow-navy)"/>
+  <rect x="866" y="222" width="258" height="20" rx="2" fill="#FFF4E8"/>
+  <text x="995" y="236" font-size="10" fill="#232F3E" text-anchor="middle">ParquetSink ×3 — nodes / ways / relations</text>
+
+  <!-- job downloads the PBF from raw -->
+  <path d="M 405 214 v 32 h 590 v -22" fill="none" stroke="#545B64" stroke-width="1.4" marker-end="url(#arrow-gray)"/>
+  <text x="700" y="252" font-size="10" fill="#879596" text-anchor="middle">download PBF (S3 gateway endpoint)</text>
+
+  <!-- 4 write Parquet -->
+  <line x1="1080" y1="246" x2="1080" y2="296" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="1080" cy="271" r="10" fill="#232F3E"/>
+  <text x="1080" y="275" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">4</text>
+  <text x="1088" y="275" font-size="10" fill="#545B64">write Parquet</text>
+
+  <!-- S3 curated -->
+  <rect x="290" y="300" width="690" height="72" rx="4" fill="#FFFFFF" stroke="#7AA116" stroke-width="2"/>
+  <rect x="302" y="314" width="22" height="22" rx="3" fill="#7AA116"/>
+  <path d="M 306 318 l 3 12 h 14 l 3 -12 z M 307 320 h 16" stroke="#FFFFFF" stroke-width="1.5" fill="none"/>
+  <text x="334" y="321" font-size="12" font-weight="bold" fill="#232F3E">Amazon S3 — curated bucket</text>
+  <text x="334" y="336" font-size="10" fill="#545B64">_staging/run_id=&lt;attempt&gt;/  →  curated/region=quebec/2026/11/08/entity=*/</text>
+  <text x="334" y="356" font-size="10" fill="#545B64">data objects copied first, then _manifest.json last (completion marker)</text>
+
+  <!-- 5 partition projection -->
+  <line x1="405" y1="372" x2="405" y2="436" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="405" cy="404" r="10" fill="#232F3E"/>
+  <text x="405" y="408" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">5</text>
+  <text x="413" y="408" font-size="10" fill="#545B64">partition projection</text>
+
+  <!-- Glue Data Catalog -->
+  <rect x="290" y="440" width="230" height="70" rx="4" fill="#FFFFFF" stroke="#8C4FFF" stroke-width="2"/>
+  <rect x="302" y="454" width="22" height="22" rx="3" fill="#8C4FFF"/>
+  <ellipse cx="313" cy="457" rx="7" ry="2.6" fill="#FFFFFF"/>
+  <path d="M 306 457 v 14 a 7 2.6 0 0 0 14 0 v -14" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text x="334" y="461" font-size="12" font-weight="bold" fill="#232F3E">AWS Glue Data Catalog</text>
+  <text x="334" y="476" font-size="10" fill="#545B64">projected table</text>
+  <text x="334" y="490" font-size="10" fill="#545B64">osm_catalog.osm_curated</text>
+
+  <!-- 6 run the numbered SQL -->
+  <line x1="520" y1="475" x2="574" y2="475" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="547" cy="475" r="10" fill="#232F3E"/>
+  <text x="547" y="479" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">6</text>
+  <text x="547" y="461" font-size="10" fill="#545B64" text-anchor="middle">numbered SQL</text>
+
+  <!-- Athena -->
+  <rect x="580" y="440" width="260" height="88" rx="4" fill="#FFFFFF" stroke="#8C4FFF" stroke-width="2"/>
+  <rect x="592" y="454" width="22" height="22" rx="3" fill="#8C4FFF"/>
+  <circle cx="601" cy="463" r="6" fill="none" stroke="#FFFFFF" stroke-width="1.6"/>
+  <line x1="605.5" y1="467.5" x2="610" y2="472" stroke="#FFFFFF" stroke-width="1.6"/>
+  <text x="624" y="461" font-size="12" font-weight="bold" fill="#232F3E">Amazon Athena</text>
+  <text x="624" y="476" font-size="10" fill="#545B64">workgroup with scan cutoff</text>
+  <text x="624" y="494" font-size="10" fill="#545B64">re_pois_quebec_city_20261108</text>
+  <text x="624" y="508" font-size="10" fill="#545B64">re_listing_scores_quebec_city_20261108</text>
+  <text x="624" y="522" font-size="10" fill="#545B64">3 analyst views</text>
+
+  <!-- 7 analyst handoff -->
+  <line x1="840" y1="475" x2="894" y2="475" stroke="#232F3E" stroke-width="1.8" marker-end="url(#arrow-navy)"/>
+  <circle cx="867" cy="475" r="10" fill="#232F3E"/>
+  <text x="867" y="479" font-size="11" font-weight="bold" fill="#FFFFFF" text-anchor="middle">7</text>
+  <text x="867" y="461" font-size="10" fill="#545B64" text-anchor="middle">analyst handoff</text>
+
+  <!-- Analyst -->
+  <rect x="900" y="440" width="230" height="70" rx="4" fill="#FFFFFF" stroke="#232F3E" stroke-width="2"/>
+  <rect x="912" y="454" width="22" height="22" rx="3" fill="#232F3E"/>
+  <circle cx="923" cy="460" r="4" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <path d="M 917 472 a 6 4 0 0 1 12 0" fill="none" stroke="#FFFFFF" stroke-width="1.5"/>
+  <text x="944" y="461" font-size="12" font-weight="bold" fill="#232F3E">Analyst</text>
+  <text x="944" y="476" font-size="10" fill="#545B64">shortlist · fact sheet ·</text>
+  <text x="944" y="490" font-size="10" fill="#545B64">coverage map (any Athena tool)</text>
+
+  <!-- QuickSight: optional, faded, dashed -->
+  <line x1="1015" y1="510" x2="1015" y2="528" stroke="#879596" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arrow-gray)"/>
+  <text x="1040" y="523" font-size="10" fill="#879596">optional</text>
+  <rect x="900" y="532" width="230" height="56" rx="4" fill="#F5F6F7" stroke="#879596" stroke-width="1.5" stroke-dasharray="5 3"/>
+  <rect x="912" y="546" width="22" height="22" rx="3" fill="#B7B9C2"/>
+  <rect x="917" y="556" width="3" height="6" fill="#FFFFFF"/>
+  <rect x="922" y="552" width="3" height="10" fill="#FFFFFF"/>
+  <rect x="927" y="558" width="3" height="4" fill="#FFFFFF"/>
+  <text x="944" y="553" font-size="12" font-weight="bold" fill="#879596">Amazon QuickSight</text>
+  <text x="944" y="568" font-size="10" fill="#879596">optional BI layer — not deployed</text>
+
+  <!-- footer -->
+  <text x="40" y="606" font-size="9" fill="#879596">Monthly snapshot flow, steps 1–7. Faded dashed elements: one-time setup and the optional QuickSight BI layer. OSM data © OpenStreetMap contributors (ODbL).</text>
+</svg>

@@ -15,19 +15,6 @@
       "throughput_entities_per_parse_second_derived": 26885.6
     },
     {
-      "region": "london",
-      "run_id": "london-20261109142209",
-      "extract_date": "2026-11-08",
-      "status": "success",
-      "record": "london-20261108.json",
-      "entities": 13346901,
-      "parquet_files": 46,
-      "parquet_bytes": 588845591,
-      "parse_seconds": 549.27,
-      "validation": "athena_not_queried",
-      "throughput_entities_per_parse_second_derived": 24299.3
-    },
-    {
       "region": "monaco",
       "run_id": "monaco-20261110T023307Z",
       "extract_date": "2026-11-08",

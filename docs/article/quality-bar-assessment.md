@@ -18,7 +18,7 @@ Assessment target: [the article](processing-148-million-openstreetmap-entities-a
 
 ### Working code/config — PARTIAL
 
-- **Evidence:** Article sections 3–6 and 8–9 show code from `src/osm_parser.py`, `src/parquet_writer.py`, `src/pipeline.py`, `Dockerfile`, `infrastructure/*.tf`, `scripts/*.sh`, `sql/athena/validate_entity_counts.sql`, and the Glue/Athena resources. The architecture figure is in `figures/architecture.mmd`.
+- **Evidence:** Article sections 3–6 and 8–9 show code from `src/osm_parser.py`, `src/parquet_writer.py`, `src/pipeline.py`, `Dockerfile`, `infra/*.tf`, `scripts/*.sh`, `sql/athena/validate_entity_counts.sql`, and the Glue/Athena resources. The architecture figure is in `figures/architecture.mmd`.
 - **Checks run for this draft:** Python 3.12 `make check` passed after task 8: Ruff check, Ruff format, mypy, and **139 tests passed**. Task 9 changed editorial/benchmark files only. Terraform formatting passed; init/validation could not run because the registry was unreachable and cached provider binaries would not start. No plan/apply was run.
 - **AWS scope:** No new AWS API calls were made while drafting this article. Quebec measurements and troubleshooting are presented as historical evidence from the existing benchmark record and prior read-only audit, not as a fresh deployment verification.
 - **Gap:** Docker was installed but its daemon was not available. The article says the Docker build and smoke commands were not run. The historical ECR size is clearly labelled as registry evidence.
@@ -34,7 +34,7 @@ Assessment target: [the article](processing-148-million-openstreetmap-entities-a
 ### Real engineering experience — PASS
 
 - **Evidence:** Section 7 includes the actual `GetAuthorizationToken` timeout, explains why it indicates a network failure, correlates failed attempts with endpoint creation and successful starts, and documents the duplicate Quebec job and final manifest. Section 3.5 explains the 300,000-row historical files and the writer correction.
-- **Repository files:** `docs/benchmarks/quebec-20261108.json`, `docs/benchmarks/README.md`, `docs/troubleshooting.md`, `infrastructure/endpoints.tf`, `infrastructure/batch.tf`.
+- **Repository files:** `docs/benchmarks/quebec-20261108.json`, `docs/benchmarks/README.md`, `docs/troubleshooting.md`, `infra/endpoints.tf`, `infra/batch.tf`.
 - **Qualification:** The endpoint diagnosis is a timestamp and configuration correlation, not a packet capture; the article says that. Historical evidence is preserved; Quebec was not rerun.
 - **Required improvement:** None for the article. A fresh small run would validate the newer code but is outside the authorized scope.
 
@@ -53,7 +53,7 @@ Assessment target: [the article](processing-148-million-openstreetmap-entities-a
 ### Production thinking — PASS
 
 - **Evidence:** Sections 7 and 11 explain retries, concurrency, best-effort rollback, S3 versioning, IAM boundaries, network paths, lifecycle, compute sizing, logs, unmeasured costs and observability gaps. Limitations include the missing distributed lock, non-atomic `replace`, unmeasured peak memory, mutable historical image tag and leaf-level Glue tables.
-- **Repository files:** `infrastructure/iam.tf`, `s3.tf`, `endpoints.tf`, `batch.tf`, `src/pipeline.py`, `docs/ARCHITECTURE.md`, `docs/COST.md`.
+- **Repository files:** `infra/iam.tf`, `s3.tf`, `endpoints.tf`, `batch.tf`, `src/pipeline.py`, `docs/ARCHITECTURE.md`, `docs/COST.md`.
 - **Required improvement:** A partition lock and safer replacement protocol are valuable follow-up engineering work; the article accurately presents them as limitations.
 
 ### Deploy to verify — PARTIAL
@@ -65,7 +65,7 @@ Assessment target: [the article](processing-148-million-openstreetmap-entities-a
 ### Cleanup — PASS
 
 - **Evidence:** Section 12 shows the interactive cleanup script and explains `force_destroy = false`, object versions/delete markers, ECR image retention, log export, state retention and post-destroy checks.
-- **Repository files:** `scripts/cleanup.sh`, `docs/cleanup.md`, `infrastructure/s3.tf`.
+- **Repository files:** `scripts/cleanup.sh`, `docs/cleanup.md`, `infra/s3.tf`.
 - **Gap:** The cleanup procedure was reviewed but not run.
 - **Required improvement:** None for the article; a reader must review the actual destroy plan before confirming cleanup.
 

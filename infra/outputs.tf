@@ -3,19 +3,34 @@ output "athena_workgroup_name" {
   value       = aws_athena_workgroup.osm_workgroup.name
 }
 
+output "aws_region" {
+  description = "AWS region the stack is deployed in."
+  value       = var.aws_region
+}
+
 output "batch_compute_environment_arn" {
   description = "ARN of the Batch compute environment."
   value       = aws_batch_compute_environment.osm_compute.arn
 }
 
 output "batch_job_definition_arn" {
-  description = "ARN of the Batch job definition."
-  value       = aws_batch_job_definition.osm_job.arn
+  description = "ARN of the manual Batch job definition (pinned revision)."
+  value       = aws_batch_job_definition.osm_job["manual"].arn
 }
 
 output "batch_job_definition_name" {
-  description = "Name of the Batch job definition."
-  value       = aws_batch_job_definition.osm_job.name
+  description = "Name of the manual Batch job definition."
+  value       = aws_batch_job_definition.osm_job["manual"].name
+}
+
+output "batch_event_job_definition_name" {
+  description = "Name of the EventBridge-facing Batch job definition."
+  value       = aws_batch_job_definition.osm_job["event"].name
+}
+
+output "batch_event_job_definition_arn" {
+  description = "Revisionless ARN of the EventBridge-facing Batch job definition."
+  value       = aws_batch_job_definition.osm_job["event"].arn_prefix
 }
 
 output "batch_job_queue_name" {
@@ -41,6 +56,16 @@ output "curated_prefix_uri" {
 output "ecr_repository_url" {
   description = "ECR repository URL to push the pipeline image to."
   value       = aws_ecr_repository.batch.repository_url
+}
+
+output "eventbridge_rule_name" {
+  description = "EventBridge rule that submits Batch jobs for new raw PBF uploads, or null when disabled."
+  value       = var.s3_trigger_enabled ? aws_cloudwatch_event_rule.raw_pbf_uploaded[0].name : null
+}
+
+output "s3_trigger_enabled" {
+  description = "Whether the S3 -> EventBridge -> Batch trigger is enabled."
+  value       = var.s3_trigger_enabled
 }
 
 output "glue_database_name" {

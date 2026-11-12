@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-AWS_REGION="${AWS_REGION:-us-east-1}"
-OUTPUT_BUCKET="${OUTPUT_BUCKET:-$(terraform -chdir=infrastructure output -raw curated_bucket_name)}"
+# List one partition's curated output and its manifest, failing explicitly
+# when either is missing. This verifies publication, not Athena or business
+# correctness.
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -z "${OUTPUT_BUCKET:-}" || -z "${AWS_REGION:-}" ]]; then
+  # Load OUTPUT_BUCKET and AWS_REGION from Terraform outputs.
+  # shellcheck source=scripts/env.sh
+  source "${PROJECT_ROOT}/scripts/env.sh"
+fi
+
 REGION_NAME="${REGION_NAME:?Set REGION_NAME, for example monaco}"
 YMD="${YMD:?Set YMD as YYYYMMDD}"
 OUTPUT_PREFIX="${OUTPUT_PREFIX:-curated}"
