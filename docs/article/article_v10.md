@@ -141,7 +141,7 @@ Both runs executed on the 2 vCPU, 8 GiB RAM Fargate configuration:
 
 Treat these numbers as observed execution records rather than a controlled scalability benchmark:
 
-- **Different datasets and run conditions:** Two Québec jobs overlapped on the same partition during the initial run before partition locking was added, and ~28 s of Monaco's 31 s Batch wall-clock duration is Fargate startup overhead. Do not extrapolate linear scaling or throughput curves from these runs.
+- **Different datasets and run conditions:** Roughly 28 s of Monaco's 31 s Batch wall-clock duration is Fargate task startup overhead, whereas Québec's 98.7 minutes are dominated by sequential parsing and Parquet staging. Do not extrapolate linear scaling or throughput curves from these two extracts.
 - **Why Parquet is larger than the PBF input:** Québec's 1.17 GB PBF expands to 6.454 GB of Snappy-compressed Parquet because PBF uses dense protobuf delta encoding and shared string tables, whereas the Parquet table writes explicit columns (`osm_id`, promoted tag columns, `node_refs`, `members` and a JSON `tags` string) per row so Athena can prune columns without decoding protobuf blocks.
 
 Where did the execution time go during the Québec run? The CloudWatch logs split the ~98 minutes of application runtime (plus ~28 s of Fargate startup and teardown) into four stages:
