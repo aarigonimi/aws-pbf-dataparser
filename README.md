@@ -143,7 +143,6 @@ make check   # runs ruff check, ruff format --check, mypy src, pytest, and terra
 - [Cost Breakdown](docs/COST.md)
 - [Troubleshooting Guide](docs/troubleshooting.md)
 - [Cleanup Guide](docs/cleanup.md)
-- [Benchmark Records](docs/benchmarks/README.md)
 
 ---
 

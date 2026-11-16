@@ -49,6 +49,8 @@ src_dec/
 
 # Local article drafts, screenshots, and Gemfile (kept locally, untracked remotely)
 docs/article/
+docs/benchmarks/
+docs/decisions/
 Gemfile
 Gemfile.lock
 assets/images/*

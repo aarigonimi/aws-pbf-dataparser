@@ -93,13 +93,7 @@ Terraform creates:
   per-query scan cutoff (`athena_bytes_scanned_cutoff`, default 10 GiB; `0`
   disables it).
 
-The projected table replaces the previous crawler configuration in this
-repository. It was deployed on 2026-11-10 during the migration that retired
-the crawler stack, and queried via Athena in the Monaco tutorial validation
-(see [benchmarks](benchmarks/README.md)). For an
-existing stack, inspect the Terraform plan for crawler removal and creation of
-`osm_curated` before applying it; the historical benchmark records describe the
-earlier catalog setup.
+The projected table replaces the need for a Glue crawler so new snapshots are queryable in Athena as soon as `_manifest.json` is written.
 
 Inspect outputs:
 
