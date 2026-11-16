@@ -1,5 +1,5 @@
-title: aws-pbf-dataparse
-description: A field guide to streaming OpenStreetMap PBF data into queryable Parquet on AWS.
+title: aws-pbf-dataparser
+description: Event-driven OpenStreetMap PBF to Parquet pipeline on AWS Batch, Glue, and Athena.
 url: https://aarigonimi.github.io
 baseurl: /aws-pbf-dataparser
 markdown: kramdown
@@ -22,6 +22,8 @@ exclude:
   - README.md
   - SECURITY.md
   - Gemfile
+  - Gemfile.lock
+  - docs/article
   - infra
   - pyproject.toml
   - requirements-dev.txt

@@ -1,20 +1,47 @@
 ---
 layout: article
-title: Field notes from an OpenStreetMap pipeline on AWS
-description: "Articles and engineering notes from streaming OpenStreetMap PBF into queryable Parquet on AWS — benchmarks, production incidents and lessons learned."
+title: OpenStreetMap PBF to Parquet on AWS
+description: "Convert regional OpenStreetMap .osm.pbf extracts into partitioned Parquet tables in Amazon S3 using EventBridge, AWS Batch on Fargate, AWS Glue, and Amazon Athena."
 permalink: /
 ---
 
-Everything on this site comes from building and operating [aws-pbf-dataparser](https://github.com/aarigonimi/aws-pbf-dataparser), a streaming PBF-to-Parquet pipeline that turns regional OpenStreetMap extracts into datasets you can query with SQL in Amazon Athena. Start with the field report; go deep with the walkthrough.
+![Pipeline architecture]({{ '/assets/images/architecture.webp' | relative_url }})
 
-## Articles
+## Overview
 
-### [Processing 148 Million OpenStreetMap Entities with AWS Batch]({{ '/processing-148-million-openstreetmap-entities-aws-batch/' | relative_url }})
+`aws-pbf-dataparser` streams regional OpenStreetMap `.osm.pbf` snapshots into Snappy-compressed Parquet files in Amazon S3, registers them in the AWS Glue Data Catalog with partition projection, and queries them in Amazon Athena.
 
-Building a streaming PBF-to-Parquet data pipeline on AWS, and the engineering lessons learned along the way. One Fargate task, 497 Parquet files, two production incidents and one honestly labeled benchmark.
+- **Event-driven ingestion:** Uploading a `.osm.pbf` extract to the raw S3 bucket triggers an EventBridge rule that submits an AWS Batch job on AWS Fargate.
+- **Streaming parser:** PyOsmium streams `nodes`, `ways` (with optional WKT `LINESTRING` reconstruction), and `relations` into bounded PyArrow Parquet batches.
+- **SQL-ready:** Partition projection on `osm_catalog.osm_curated` exposes new snapshots immediately in Amazon Athena without Glue Crawlers.
 
-AWS · AWS Batch · Data Engineering · OpenStreetMap · Parquet
+## Quickstart
 
-### [The Full Implementation Walkthrough: OpenStreetMap PBF to Parquet on AWS Batch]({{ '/walkthrough/' | relative_url }})
+```bash
+git clone https://github.com/aarigonimi/aws-pbf-dataparser.git
+cd aws-pbf-dataparser
+python3.12 -m venv .venv && source .venv/bin/activate
+make install
 
-Every module, Terraform block, command and caveat behind the pipeline, in build order — the long-form companion for readers who want the complete implementation, not just the story.
+cp -n infra/terraform.tfvars.example infra/terraform.tfvars
+make deploy
+make build
+
+# Smoke test with Monaco (~707 KB)
+make run
+make logs
+make verify
+```
+
+## Documentation
+
+- [Architecture & Publication Semantics](docs/ARCHITECTURE.md)
+- [Parquet Schema & Partition Layout](docs/SCHEMA.md)
+- [Deployment Guide](docs/deployment.md)
+- [S3 → EventBridge → Batch Trigger](docs/trigger.md)
+- [Execution & Operations](docs/execution.md)
+- [Athena Validation](docs/validation.md)
+- [Real-Estate SQL Demo (`sql/athena/real_estate/`)](docs/REAL_ESTATE.md)
+- [Cost Breakdown](docs/COST.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Cleanup Guide](docs/cleanup.md)

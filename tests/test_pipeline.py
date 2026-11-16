@@ -207,7 +207,7 @@ def test_skip_mode_rejects_stray_output(tmp_path: Path):
         run_pipeline(config, s3=fake, processor=_processor())
 
     assert (
-        'REGION_NAME="$REGION_NAME" YMD="$YMD" OVERWRITE=replace ' "./scripts/submit_job.sh"
+        'REGION_NAME="$REGION_NAME" YMD="$YMD" OVERWRITE=replace ./scripts/submit_job.sh'
     ) in str(raised.value)
 
 

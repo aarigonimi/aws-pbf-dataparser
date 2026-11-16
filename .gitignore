@@ -46,3 +46,11 @@ src_dec/
 # Local editor and agent tooling
 .idea/
 .continue/
+
+# Local article drafts, screenshots, and Gemfile (kept locally, untracked remotely)
+docs/article/
+Gemfile
+Gemfile.lock
+assets/images/*
+!assets/images/architecture.webp
+!assets/images/architecture.svg
