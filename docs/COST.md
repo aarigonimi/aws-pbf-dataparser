@@ -26,7 +26,7 @@ estimate is the requested vCPU-hours multiplied by the vCPU rate, plus
 requested memory GiB-hours multiplied by the memory rate, plus billable
 ephemeral-storage GiB-hours above the included amount. Add S3 storage and
 requests, CloudWatch Logs, Glue, Athena, and any data transfer separately.
-This repository does not include a measured Quebec or London cost. Use Cost
+This repository does not include a measured Quebec cost. Use Cost
 Explorer or billing exports to capture actual charges; do not infer them from
 wall-clock duration alone.
 
@@ -48,9 +48,11 @@ wall-clock duration alone.
   (`batch_compute_type = EC2`, `batch_use_spot = true`) and configure
   `spot_iam_fleet_role_arn`. Spot savings vary and can be interrupted; the job
   retries on host interruption.
-- Fargate mode already provisions ECR/Logs interface endpoints and an S3
-  gateway endpoint, avoiding NAT gateway hours; interface endpoint hours are
-  billed per AZ.
+- In the default `network_access = vpc_endpoints` mode, Fargate traffic uses
+  ECR/Logs interface endpoints and an S3 gateway endpoint, avoiding NAT gateway
+  hours; interface endpoint hours are billed per AZ. The `public_ip` mode
+  avoids endpoint hours but gives tasks public addressing, which shifts cost
+  to data transfer and opens egress.
 - Set CloudWatch Logs retention (`log_retention_days`) to the shortest period
   that still supports debugging.
 

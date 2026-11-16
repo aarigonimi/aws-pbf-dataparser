@@ -27,7 +27,7 @@ Current artifacts (all gitignored):
 ## Inspect before changing anything
 
 ```bash
-cd infrastructure
+cd infra
 terraform state list
 terraform state show aws_batch_job_definition.osm_job
 terraform state show random_id.bucket_suffix

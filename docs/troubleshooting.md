@@ -97,8 +97,8 @@ A related API limitation: an in-place CE update cannot *clear* an existing
 compute-resources attribute is required" and silently keeps the old groups,
 producing drift. To remove security groups from an existing CE, replace the
 resource: taint both the queue and the CE
-(`terraform -chdir=infrastructure taint aws_batch_job_queue.osm_queue &&
-terraform -chdir=infrastructure taint aws_batch_compute_environment.osm_compute`)
+(`terraform -chdir=infra taint aws_batch_job_queue.osm_queue &&
+terraform -chdir=infra taint aws_batch_compute_environment.osm_compute`)
 so the next apply destroys and recreates them in dependency order. Jobs do not
 run while both are down, so drain the queue first.
 

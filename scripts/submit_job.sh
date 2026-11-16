@@ -2,7 +2,6 @@
 set -euo pipefail
 
 REGION_NAME="${REGION_NAME:-monaco}"
-RUN_ID="${RUN_ID:-${REGION_NAME}-$(date +%Y%m%d%H%M%S)}"
 YMD="${YMD:-$(date +%Y%m%d)}"
 RAW_BUCKET="${RAW_BUCKET:?Set RAW_BUCKET to the S3 bucket containing the PBF extract}"
 RAW_KEY="${RAW_KEY:-region=${REGION_NAME}/${YMD:0:4}/${YMD:4:2}/${YMD:6:2}/${REGION_NAME}-${YMD}.osm.pbf}"
@@ -14,15 +13,10 @@ AWS_REGION="${AWS_REGION:-us-east-1}"
 MODE="${MODE:-all}"
 OVERWRITE="${OVERWRITE:-error}"
 PARQUET_COMPRESSION="${PARQUET_COMPRESSION:-snappy}"
-INCLUDE_WAY_GEOMETRY="${INCLUDE_WAY_GEOMETRY:-false}"
+INCLUDE_WAY_GEOMETRY="${INCLUDE_WAY_GEOMETRY:-true}"
 LOG_LEVEL="${LOG_LEVEL:-INFO}"
 ALLOW_CONCURRENT="${ALLOW_CONCURRENT:-false}"
 
-# Belt and braces on top of the pipeline's partition claim: publication is
-# serialized per region/date by an S3 conditional write (_lock.json), and a
-# losing run fails fast with exit 4. This client-side guard additionally
-# avoids queueing a second job for the same region while one is active,
-# which saves the wasted job run entirely.
 if [[ "$ALLOW_CONCURRENT" != "true" ]]; then
   ACTIVE_JOBS="$(aws batch list-jobs \
     --job-queue "$JOB_QUEUE" \
@@ -38,22 +32,25 @@ if [[ "$ALLOW_CONCURRENT" != "true" ]]; then
   fi
 fi
 
+# RUN_ID is deliberately not passed: the application derives a unique,
+# per-attempt run id from AWS_BATCH_JOB_ID and AWS_BATCH_JOB_ATTEMPT, which
+# keeps staging keys unique across Batch retries of the same job.
 CONTAINER_OVERRIDES="$(RAW_BUCKET="$RAW_BUCKET" RAW_KEY="$RAW_KEY" \
   OUTPUT_BUCKET="$OUTPUT_BUCKET" OUTPUT_PREFIX="$OUTPUT_PREFIX" \
-  REGION_NAME="$REGION_NAME" RUN_ID="$RUN_ID" YMD="$YMD" \
+  REGION_NAME="$REGION_NAME" YMD="$YMD" \
   AWS_REGION="$AWS_REGION" MODE="$MODE" OVERWRITE="$OVERWRITE" \
   PARQUET_COMPRESSION="$PARQUET_COMPRESSION" \
   INCLUDE_WAY_GEOMETRY="$INCLUDE_WAY_GEOMETRY" LOG_LEVEL="$LOG_LEVEL" \
   python3 -c 'import json, os
 keys = (
     "RAW_BUCKET", "RAW_KEY", "OUTPUT_BUCKET", "OUTPUT_PREFIX", "REGION_NAME",
-    "RUN_ID", "YMD", "AWS_REGION", "MODE", "OVERWRITE", "PARQUET_COMPRESSION",
+    "YMD", "AWS_REGION", "MODE", "OVERWRITE", "PARQUET_COMPRESSION",
     "INCLUDE_WAY_GEOMETRY", "LOG_LEVEL",
 )
 print(json.dumps({"environment": [{"name": key, "value": os.environ[key]} for key in keys]}))')"
 
 aws batch submit-job \
-  --job-name "osm-${REGION_NAME}-${RUN_ID}" \
+  --job-name "osm-${REGION_NAME}-${YMD}" \
   --job-queue "$JOB_QUEUE" \
   --job-definition "$JOB_DEFINITION" \
   --region "$AWS_REGION" \

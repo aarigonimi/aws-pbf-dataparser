@@ -15,7 +15,7 @@ __pycache__
 *.egg-info
 build
 dist
-infrastructure
+infra
 docs
 tests
 scripts

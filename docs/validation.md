@@ -4,7 +4,7 @@ Set the bucket and partition values for the completed run:
 
 ```bash
 export AWS_REGION="us-east-1"
-export OUTPUT_BUCKET="$(terraform -chdir=infrastructure output -raw curated_bucket_name)"
+export OUTPUT_BUCKET="$(terraform -chdir=infra output -raw curated_bucket_name)"
 export REGION_NAME="monaco"
 export YMD="20261108"
 export OUTPUT_PREFIX="curated"
@@ -17,8 +17,11 @@ Run the validator first. It fails closed if the final manifest is missing; it
 does not make arbitrary Athena queries wait for publication.
 
 ```bash
-./scripts/validate_output.sh
+make verify REGION_NAME=monaco YMD=20261108   # or: ./scripts/validate_output.sh
 ```
+
+The script loads `OUTPUT_BUCKET` and `AWS_REGION` from Terraform outputs when
+they are not already exported ([scripts/env.sh](../scripts/env.sh)).
 
 List the final objects and count Parquet files (the CLI paginates object
 listing):
@@ -47,8 +50,8 @@ partially published objects.
 Use the workgroup and database Terraform outputs:
 
 ```bash
-ATHENA_WORKGROUP="$(terraform -chdir=infrastructure output -raw athena_workgroup_name)"
-GLUE_DATABASE="$(terraform -chdir=infrastructure output -raw glue_database_name)"
+ATHENA_WORKGROUP="$(terraform -chdir=infra output -raw athena_workgroup_name)"
+GLUE_DATABASE="$(terraform -chdir=infra output -raw glue_database_name)"
 ```
 
 The `osm_curated` table is declared in Terraform with the explicit Parquet

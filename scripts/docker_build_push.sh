@@ -2,10 +2,19 @@
 set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if [[ -z "${ECR_REPOSITORY_URL:-}" || -z "${AWS_REGION:-}" ]]; then
+  # Load ECR_REPOSITORY_URL and AWS_REGION from Terraform outputs.
+  # shellcheck source=scripts/env.sh
+  source "${PROJECT_ROOT}/scripts/env.sh"
+fi
 ECR_REPOSITORY_URL="${ECR_REPOSITORY_URL:?Set ECR_REPOSITORY_URL (terraform output ecr_repository_url)}"
-AWS_REGION="${AWS_REGION:-us-east-1}"
 PLATFORM="${PLATFORM:-linux/amd64}"
-TAG="${TAG:?Set TAG to an immutable image tag, such as the source Git commit SHA}"
+TAG="${TAG:-$(git -C "$PROJECT_ROOT" rev-parse HEAD 2>/dev/null || echo local)}"
+
+if [[ -n "$(git -C "$PROJECT_ROOT" status --porcelain 2>/dev/null)" ]]; then
+  echo "Warning: the working tree has uncommitted changes." >&2
+  echo "The image will be tagged with the last commit, which does not contain them." >&2
+fi
 
 REGISTRY="${ECR_REPOSITORY_URL%%/*}"
 
@@ -26,4 +35,4 @@ aws ecr describe-images \
   --region "$AWS_REGION" \
   --query 'imageDetails[0].imageDigest' \
   --output text
-echo "Set infrastructure variable image_tag=${TAG} and apply a reviewed Terraform plan to register that image."
+echo "Set the Terraform variable image_tag=${TAG} and apply a reviewed Terraform plan to register that image."

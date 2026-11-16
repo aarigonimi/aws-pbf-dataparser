@@ -5,8 +5,16 @@ project_name = "osm-pbf-data-lake"
 raw_bucket_name     = "osm-data-raw"
 curated_bucket_name = "osm-data-curated"
 
-default_region = "monaco"
-output_prefix  = "curated"
+output_prefix = "curated"
+
+# S3 -> EventBridge -> Batch trigger for new .osm.pbf objects under region=.
+# Triggered jobs use the global overwrite mode below (default "error").
+s3_trigger_enabled = true
+
+# How Batch tasks reach AWS APIs. vpc_endpoints (default) creates ECR/Logs
+# interface endpoints and an S3 gateway endpoint; public_ip assigns tasks a
+# public IP instead and requires a subnet with an internet route.
+network_access = "vpc_endpoints"
 
 # Existing VPC/subnets are optional. Empty means the default VPC.
 # vpc_id     = "vpc-0123456789abcdef0"
@@ -37,7 +45,7 @@ ecr_image_tag_mutability   = "IMMUTABLE"
 mode                  = "all"
 overwrite             = "error"
 parquet_compression   = "snappy"
-include_way_geometry  = false
+include_way_geometry  = true
 log_level             = "INFO"
 log_retention_days    = 30
 
@@ -46,7 +54,8 @@ staging_retention_days         = 1
 curated_noncurrent_version_days = 30
 athena_results_retention_days  = 14
 
-athena_bytes_scanned_cutoff = 0
+# 10 GiB per-query scan limit for the Athena workgroup.
+athena_bytes_scanned_cutoff = 10737418240
 
 tags = {
   Project = "osm-pbf-data-lake"

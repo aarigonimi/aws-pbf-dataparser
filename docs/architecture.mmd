@@ -1,11 +1,14 @@
 flowchart LR
     PBF[Regional OSM PBF] -->|upload| RAW[S3 raw bucket]
-    RAW -->|Batch job role reads| JOB[AWS Batch Fargate job]
+    RAW -->|Object Created| EB[EventBridge rule]
+    EB -->|SubmitJob with rawKey| JOB[AWS Batch Fargate job]
+    RAW -->|manual submit or job role reads| JOB
     JOB -->|PyOsmium streaming parser| PARQUET[Local rotating Parquet files]
     PARQUET -->|upload| STAGE[S3 curated staging prefix]
     STAGE -->|copy data, then manifest| CURATED[S3 curated region/date/entity layout]
     CURATED --> CATALOG[Glue projected table<br/>region / year / month / day injected]
     CATALOG --> ATHENA[Amazon Athena]
+    ATHENA -. optional .-> QS[Amazon QuickSight]
 
     ECR[Amazon ECR] --> JOB
     JOB --> CW[CloudWatch Logs]

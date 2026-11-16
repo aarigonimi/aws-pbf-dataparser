@@ -4,8 +4,9 @@ import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import datetime
 from typing import Final
+from urllib.parse import unquote_plus
 
 from src.errors import ConfigError
 
@@ -15,7 +16,10 @@ VALID_MODES: Final = frozenset({"all", "nodes", "ways", "relations"})
 VALID_LOG_LEVELS: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 _ALLOWED_PATH_TOKEN: Final = re.compile(r"^[A-Za-z0-9._-]+$")
 _YMD_PATTERN: Final = re.compile(r"^\d{8}$")
-_DATE_PATH_PATTERN: Final = re.compile(r"(?:^|/)(\d{4})/(\d{2})/(\d{2})(?:/|$)")
+_RAW_KEY_PATTERN: Final = re.compile(
+    r"^region=(?P<region>[A-Za-z0-9._-]+)/(?P<year>\d{4})/(?P<month>\d{2})/(?P<day>\d{2})/"
+    r"(?P<filename>[A-Za-z0-9._-]+\.osm\.pbf)$"
+)
 
 
 def _required(env: Mapping[str, str], name: str) -> str:
@@ -113,17 +117,43 @@ def _default_run_id(env: Mapping[str, str]) -> str:
     return sanitized or "local-run"
 
 
-def _derive_ymd(env: Mapping[str, str], raw_key: str) -> str:
-    explicit = env.get("YMD") or env.get("RAW_YMD")
-    if explicit:
-        return explicit.strip()
-    for part in raw_key.split("/"):
-        if part.startswith("ymd=") and len(part) > 4:
-            return part[4:]
-    date_path = _DATE_PATH_PATTERN.search(raw_key)
-    if date_path:
-        return f"{date_path.group(1)}{date_path.group(2)}{date_path.group(3)}"
-    return date.today().strftime("%Y%m%d")
+def parse_raw_key(raw_key: str) -> tuple[str, str, str]:
+    """Validate a raw S3 key in the ``region=<name>/yyyy/mm/dd`` layout.
+
+    Returns ``(region_name, ymd, file_name)``. Every raw key must carry both a
+    region and a partition date, because triggered jobs receive nothing else;
+    missing or malformed keys raise :class:`ConfigError` instead of falling
+    back to unrelated defaults.
+    """
+
+    key = raw_key.strip().strip("/")
+    match = _RAW_KEY_PATTERN.match(key)
+    if match is None:
+        raise ConfigError(
+            "RAW_KEY must follow region=<name>/yyyy/mm/dd/<file>.osm.pbf so the "
+            f"region and partition date can be derived; got {raw_key!r}."
+        )
+    ymd = f"{match.group('year')}{match.group('month')}{match.group('day')}"
+    return match.group("region"), _validate_ymd(ymd), match.group("filename")
+
+
+def env_for_raw_key(raw_key: str, base_env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Build a job environment from an EventBridge S3 object key.
+
+    S3 event keys arrive URL-encoded, so the key is decoded first. The region
+    and partition date are parsed from the ``region=<name>/yyyy/mm/dd`` layout
+    and merged into a copy of ``base_env`` (the process environment when
+    omitted), so the event key overrides generic defaults without mutating
+    process-global configuration.
+    """
+
+    env = dict(os.environ if base_env is None else base_env)
+    key = unquote_plus(raw_key.strip())
+    region_name, ymd, _file_name = parse_raw_key(key)
+    env["RAW_KEY"] = key
+    env["REGION_NAME"] = region_name
+    env["YMD"] = ymd
+    return env
 
 
 @dataclass(frozen=True)
@@ -143,7 +173,7 @@ class JobConfig:
     mode: str = "all"
     compression: str = "snappy"
     overwrite: str = "error"
-    include_way_geometry: bool = False
+    include_way_geometry: bool = True
     max_records_per_file: int = 250_000
     row_group_size: int = 100_000
     log_level: str = "INFO"
@@ -201,7 +231,28 @@ class JobConfig:
 
         raw_bucket = _required(source, "RAW_BUCKET")
         output_bucket = _required(source, "OUTPUT_BUCKET")
-        region_name = _path_token(source, "REGION_NAME", source.get("REGION", "monaco"))
+        raw_key = source.get("RAW_KEY", "").strip().strip("/")
+
+        key_region: str | None = None
+        key_ymd: str | None = None
+        if raw_key:
+            key_region, key_ymd, _file_name = parse_raw_key(raw_key)
+
+        explicit_region = ""
+        region_env_name = "REGION_NAME"
+        for region_env_name in ("REGION_NAME", "REGION"):
+            explicit_region = source.get(region_env_name, "").strip()
+            if explicit_region:
+                break
+        if explicit_region:
+            region_name = _path_token(source, region_env_name, explicit_region)
+        elif key_region is not None:
+            region_name = key_region
+        else:
+            raise ConfigError(
+                "REGION_NAME is required when RAW_KEY does not carry a region=<name> segment."
+            )
+
         run_id = _path_token(source, "RUN_ID", _default_run_id(source))
         image_digest = source.get("JOB_IMAGE_DIGEST", "").strip() or None
         if image_digest == "unset":
@@ -210,8 +261,15 @@ class JobConfig:
         aws_region = source.get("AWS_REGION", "us-east-1").strip() or "us-east-1"
         output_prefix = _s3_prefix(source, "OUTPUT_PREFIX", "curated")
 
-        raw_key = source.get("RAW_KEY", "").strip().strip("/")
-        ymd = _validate_ymd(_derive_ymd(source, raw_key))
+        explicit_ymd = (source.get("YMD") or source.get("RAW_YMD") or "").strip()
+        if explicit_ymd:
+            ymd = _validate_ymd(explicit_ymd)
+        elif key_ymd is not None:
+            ymd = key_ymd
+        else:
+            raise ConfigError(
+                "YMD is required when RAW_KEY does not carry a yyyy/mm/dd partition path."
+            )
         if not raw_key:
             raw_key = (
                 f"region={region_name}/{ymd[0:4]}/{ymd[4:6]}/{ymd[6:8]}/{region_name}-{ymd}.osm.pbf"
@@ -240,7 +298,7 @@ class JobConfig:
             mode=mode,
             compression=compression,
             overwrite=overwrite,
-            include_way_geometry=_bool(source, "INCLUDE_WAY_GEOMETRY", False),
+            include_way_geometry=_bool(source, "INCLUDE_WAY_GEOMETRY", True),
             max_records_per_file=_positive_int(source, "MAX_RECORDS_PER_FILE", 250_000),
             row_group_size=_positive_int(source, "ROW_GROUP_SIZE", 100_000),
             log_level=log_level,

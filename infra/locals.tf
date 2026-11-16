@@ -12,6 +12,9 @@ locals {
   fargate_subnet_id  = local.default_subnet_ids[0]
   subnet_ids         = local.is_fargate ? [local.fargate_subnet_id] : local.default_subnet_ids
 
+  use_vpc_endpoints = local.is_fargate && var.network_access == "vpc_endpoints"
+  assign_public_ip  = local.is_fargate && var.network_access == "public_ip"
+
   compute_resource_type = local.is_fargate ? "FARGATE" : (var.batch_use_spot ? "SPOT" : "EC2")
 
   container_environment = [
@@ -19,9 +22,7 @@ locals {
     { name = "RAW_BUCKET", value = local.raw_bucket_name },
     { name = "OUTPUT_BUCKET", value = local.curated_bucket_name },
     { name = "OUTPUT_PREFIX", value = var.output_prefix },
-    { name = "REGION_NAME", value = var.default_region },
-    # RUN_ID is intentionally not set: the application derives a unique,
-    # per-attempt run id from AWS_BATCH_JOB_ID and AWS_BATCH_JOB_ATTEMPT.
+    # region=<name> parsed from RAW_KEY
     { name = "JOB_IMAGE_DIGEST", value = var.image_digest == "" ? "unset" : var.image_digest },
     { name = "GIT_SHA", value = var.image_tag },
     { name = "MODE", value = var.mode },
@@ -36,6 +37,10 @@ locals {
   container_properties = merge(
     {
       image = local.image_reference
+      command = [
+        "--raw-key",
+        "Ref::raw_key",
+      ]
       resourceRequirements = [
         { type = "VCPU", value = tostring(var.batch_vcpus) },
         { type = "MEMORY", value = tostring(var.batch_memory_mb) },
@@ -55,5 +60,17 @@ locals {
     local.is_fargate ? {
       ephemeralStorage = { sizeInGiB = var.batch_ephemeral_storage_gb }
     } : {},
+    local.assign_public_ip ? {
+      networkConfiguration = { assignPublicIp = "ENABLED" }
+    } : {},
   )
+
+  job_definitions = {
+    manual = {
+      name = "${var.project_name}-job"
+    }
+    event = {
+      name = "${var.project_name}-job-event"
+    }
+  }
 }
