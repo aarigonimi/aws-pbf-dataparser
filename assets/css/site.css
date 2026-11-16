@@ -80,8 +80,9 @@ a { color: inherit; }
 .story-tags { display: flex; flex-wrap: wrap; gap: 8px; width: min(1120px, 100%); margin: -18px auto 10px; }
 .story-tags .tag { padding: .34rem .72rem; border: 1px solid rgb(86 186 168 / 34%); border-radius: 99px; color: #a6e3d6; background: rgb(86 186 168 / 7%); font: 500 .66rem/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase; }
 
-.article-layout { display: grid; grid-template-columns: minmax(0, var(--reading-width)) 210px; gap: clamp(32px, 5vw, 78px); width: min(1160px, calc(100% - 48px)); align-items: start; margin: 0 auto 80px; padding: clamp(34px, 5vw, 64px) clamp(26px, 5.4vw, 80px); border: 1px solid #e2e8e5; border-radius: 15px; color: var(--ink); background: var(--paper); box-shadow: 0 22px 90px rgb(0 0 0 / 22%); }
-.article-copy { min-width: 0; max-width: var(--reading-width); }
+.article-layout { width: min(960px, calc(100% - 48px)); margin: 28px auto 80px; padding: clamp(32px, 5vw, 56px) clamp(24px, 5vw, 64px); border: 1px solid #e2e8e5; border-radius: 15px; color: var(--ink); background: var(--paper); box-shadow: 0 22px 90px rgb(0 0 0 / 22%); }
+.article-copy { min-width: 0; max-width: 100%; }
+.article-copy img { display: block; width: 100%; max-width: 100%; height: auto; margin: 0 auto 24px; border: 1px solid #dce4e3; border-radius: 10px; }
 .article-copy > h1 { margin: 0 0 18px; color: #15232a; font-size: clamp(2rem, 4.1vw, 3.15rem); font-weight: 700; letter-spacing: -.045em; line-height: 1.12; }
 .article-copy > p:first-of-type { margin: 0 0 28px; color: #657780; font-size: clamp(1.06rem, 1.8vw, 1.28rem); line-height: 1.55; }
 .article-copy h2 { margin: 3.5rem 0 1.1rem; padding-top: .6rem; color: #1b2b32; font-size: 1.7rem; font-weight: 700; letter-spacing: -.03em; line-height: 1.25; scroll-margin-top: 94px; }

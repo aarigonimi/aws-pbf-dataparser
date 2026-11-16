@@ -5,7 +5,7 @@ description: "Convert regional OpenStreetMap .osm.pbf extracts into partitioned 
 permalink: /
 ---
 
-![Pipeline architecture]({{ '/assets/images/architecture.webp' | relative_url }})
+<img src="{{ '/assets/images/architecture.webp' | relative_url }}" alt="Monthly OSM pipeline architecture" style="width: 100%; max-width: 100%; height: auto; display: block; border-radius: 10px;" />
 
 ## Overview
 
@@ -35,13 +35,13 @@ make verify
 
 ## Documentation
 
-- [Architecture & Publication Semantics](docs/ARCHITECTURE.md)
-- [Parquet Schema & Partition Layout](docs/SCHEMA.md)
-- [Deployment Guide](docs/deployment.md)
-- [S3 → EventBridge → Batch Trigger](docs/trigger.md)
-- [Execution & Operations](docs/execution.md)
-- [Athena Validation](docs/validation.md)
-- [Real-Estate SQL Demo (`sql/athena/real_estate/`)](docs/REAL_ESTATE.md)
-- [Cost Breakdown](docs/COST.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Cleanup Guide](docs/cleanup.md)
+- [Architecture & Publication Semantics](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/ARCHITECTURE.md)
+- [Parquet Schema & Partition Layout](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/SCHEMA.md)
+- [Deployment Guide](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/deployment.md)
+- [S3 → EventBridge → Batch Trigger](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/trigger.md)
+- [Execution & Operations](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/execution.md)
+- [Athena Validation](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/validation.md)
+- [Real-Estate SQL Demo (`sql/athena/real_estate/`)](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/REAL_ESTATE.md)
+- [Cost Breakdown](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/COST.md)
+- [Troubleshooting](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/troubleshooting.md)
+- [Cleanup Guide](https://github.com/aarigonimi/aws-pbf-dataparser/blob/main/docs/cleanup.md)
