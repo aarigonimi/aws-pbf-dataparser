@@ -1,4 +1,4 @@
-boto3==1.43.126
+boto3==1.44.9
 botocore==1.43.126
 osmium==4.3.2
 pyarrow==26.0.1
